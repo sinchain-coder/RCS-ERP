@@ -1,4 +1,17 @@
-import { type User, type InsertUser, type Product, type InsertProduct, type Order, type InsertOrder, type OrderItem, type InsertOrderItem } from "@shared/schema";
+import { 
+  type User, 
+  type InsertUser, 
+  type Product, 
+  type InsertProduct, 
+  type Order, 
+  type InsertOrder, 
+  type OrderItem, 
+  type InsertOrderItem,
+  type Store,
+  type InsertStore,
+  type StoreCategory,
+  type InsertStoreCategory 
+} from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -23,6 +36,20 @@ export interface IStorage {
   // Order items
   getOrderItems(orderId: string): Promise<OrderItem[]>;
   createOrderItem(orderItem: InsertOrderItem): Promise<OrderItem>;
+
+  // Store categories
+  getStoreCategories(): Promise<StoreCategory[]>;
+  getStoreCategory(id: string): Promise<StoreCategory | undefined>;
+  createStoreCategory(category: InsertStoreCategory): Promise<StoreCategory>;
+  updateStoreCategory(id: string, category: Partial<InsertStoreCategory>): Promise<StoreCategory | undefined>;
+  deleteStoreCategory(id: string): Promise<boolean>;
+
+  // Stores
+  getStores(): Promise<Store[]>;
+  getStore(id: string): Promise<Store | undefined>;
+  createStore(store: InsertStore): Promise<Store>;
+  updateStore(id: string, store: Partial<InsertStore>): Promise<Store | undefined>;
+  deleteStore(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -30,12 +57,16 @@ export class MemStorage implements IStorage {
   private products: Map<string, Product>;
   private orders: Map<string, Order>;
   private orderItems: Map<string, OrderItem>;
+  private storeCategories: Map<string, StoreCategory>;
+  private stores: Map<string, Store>;
 
   constructor() {
     this.users = new Map();
     this.products = new Map();
     this.orders = new Map();
     this.orderItems = new Map();
+    this.storeCategories = new Map();
+    this.stores = new Map();
     
     // Initialize with sample data
     this.initializeSampleData();
@@ -196,6 +227,85 @@ export class MemStorage implements IStorage {
     };
     this.orderItems.set(id, orderItem);
     return orderItem;
+  }
+
+  // Store category methods
+  async getStoreCategories(): Promise<StoreCategory[]> {
+    return Array.from(this.storeCategories.values());
+  }
+
+  async getStoreCategory(id: string): Promise<StoreCategory | undefined> {
+    return this.storeCategories.get(id);
+  }
+
+  async createStoreCategory(insertCategory: InsertStoreCategory): Promise<StoreCategory> {
+    const id = randomUUID();
+    const category: StoreCategory = {
+      ...insertCategory,
+      id,
+      image: insertCategory.image || null,
+      color: insertCategory.color || null,
+      shape: insertCategory.shape || null,
+      isActive: insertCategory.isActive ?? true,
+      createdAt: new Date(),
+    };
+    this.storeCategories.set(id, category);
+    return category;
+  }
+
+  async updateStoreCategory(id: string, updateData: Partial<InsertStoreCategory>): Promise<StoreCategory | undefined> {
+    const category = this.storeCategories.get(id);
+    if (!category) return undefined;
+
+    const updatedCategory: StoreCategory = {
+      ...category,
+      ...updateData,
+    };
+    this.storeCategories.set(id, updatedCategory);
+    return updatedCategory;
+  }
+
+  async deleteStoreCategory(id: string): Promise<boolean> {
+    return this.storeCategories.delete(id);
+  }
+
+  // Store methods
+  async getStores(): Promise<Store[]> {
+    return Array.from(this.stores.values());
+  }
+
+  async getStore(id: string): Promise<Store | undefined> {
+    return this.stores.get(id);
+  }
+
+  async createStore(insertStore: InsertStore): Promise<Store> {
+    const id = randomUUID();
+    const store: Store = {
+      ...insertStore,
+      id,
+      categoryId: insertStore.categoryId || null,
+      upiQrCode: insertStore.upiQrCode || null,
+      isActive: insertStore.isActive ?? true,
+      createdAt: new Date(),
+    };
+    this.stores.set(id, store);
+    return store;
+  }
+
+  async updateStore(id: string, updateData: Partial<InsertStore>): Promise<Store | undefined> {
+    const store = this.stores.get(id);
+    if (!store) return undefined;
+
+    const updatedStore: Store = {
+      ...store,
+      ...updateData,
+    };
+    this.stores.set(id, updatedStore);
+    return updatedStore;
+  }
+
+  async deleteStore(id: string): Promise<boolean> {
+    return this.stores.delete(id);
   }
 }
 

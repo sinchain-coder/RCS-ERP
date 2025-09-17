@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertProductSchema, insertOrderSchema, insertUserSchema } from "@shared/schema";
+import { insertProductSchema, insertOrderSchema, insertUserSchema, insertStoreSchema, insertStoreCategorySchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Admin routes
@@ -67,6 +67,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Product deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete product" });
+    }
+  });
+
+  // Store Categories routes
+  app.get("/api/admin/store-categories", async (req, res) => {
+    try {
+      const categories = await storage.getStoreCategories();
+      res.json({ message: "Store categories fetched successfully", data: categories });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch store categories" });
+    }
+  });
+
+  app.post("/api/admin/store-categories", async (req, res) => {
+    try {
+      const categoryData = insertStoreCategorySchema.parse(req.body);
+      const category = await storage.createStoreCategory(categoryData);
+      res.json({ message: "Store category created successfully", data: category });
+    } catch (error) {
+      res.status(400).json({ message: "Invalid store category data" });
+    }
+  });
+
+  app.put("/api/admin/store-categories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+      const category = await storage.updateStoreCategory(id, updateData);
+      if (!category) {
+        return res.status(404).json({ message: "Store category not found" });
+      }
+      res.json({ message: "Store category updated successfully", data: category });
+    } catch (error) {
+      res.status(400).json({ message: "Failed to update store category" });
+    }
+  });
+
+  app.delete("/api/admin/store-categories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteStoreCategory(id);
+      if (!success) {
+        return res.status(404).json({ message: "Store category not found" });
+      }
+      res.json({ message: "Store category deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete store category" });
+    }
+  });
+
+  // Stores routes
+  app.get("/api/admin/stores", async (req, res) => {
+    try {
+      const stores = await storage.getStores();
+      res.json({ message: "Stores fetched successfully", data: stores });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch stores" });
+    }
+  });
+
+  app.get("/api/admin/stores/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const store = await storage.getStore(id);
+      if (!store) {
+        return res.status(404).json({ message: "Store not found" });
+      }
+      res.json({ message: "Store fetched successfully", data: store });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch store" });
+    }
+  });
+
+  app.post("/api/admin/stores", async (req, res) => {
+    try {
+      const storeData = insertStoreSchema.parse(req.body);
+      const store = await storage.createStore(storeData);
+      res.json({ message: "Store created successfully", data: store });
+    } catch (error) {
+      res.status(400).json({ message: "Invalid store data" });
+    }
+  });
+
+  app.put("/api/admin/stores/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+      const store = await storage.updateStore(id, updateData);
+      if (!store) {
+        return res.status(404).json({ message: "Store not found" });
+      }
+      res.json({ message: "Store updated successfully", data: store });
+    } catch (error) {
+      res.status(400).json({ message: "Failed to update store" });
+    }
+  });
+
+  app.delete("/api/admin/stores/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteStore(id);
+      if (!success) {
+        return res.status(404).json({ message: "Store not found" });
+      }
+      res.json({ message: "Store deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete store" });
     }
   });
 
