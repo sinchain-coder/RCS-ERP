@@ -67,6 +67,83 @@ export const stores = pgTable("stores", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const itemCategories = pgTable("item_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  image: text("image"), // Optional image URL
+  color: text("color"), // Optional color for visual representation
+  shape: text("shape"), // Optional shape for visual representation
+  sortOrder: integer("sort_order").notNull().default(0), // For POS ordering
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const taxes = pgTable("taxes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  rate: decimal("rate", { precision: 5, scale: 2 }).notNull(), // Tax percentage
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const items = pgTable("items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productName: text("product_name").notNull(),
+  displayName: text("display_name").notNull(), // Shown on POS
+  barcode: text("barcode"), // Either barcode OR qrCode, not both
+  qrCode: text("qr_code"), // Either barcode OR qrCode, not both
+  soldBy: text("sold_by").notNull().default("piece"), // "piece" or "weight"
+  masterPackSize: integer("master_pack_size").notNull().default(1),
+  lowStockValue: integer("low_stock_value").notNull().default(10),
+  image: text("image"), // Image URL OR use color + shape
+  color: text("color"), // Optional color for visual representation
+  shape: text("shape"), // Optional shape for visual representation
+  categoryIds: text("category_ids").array(), // Multiple categories (array of IDs)
+  taxIds: text("tax_ids").array(), // Multiple taxes (array of IDs)
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const itemPrices = pgTable("item_prices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemId: varchar("item_id").notNull().references(() => items.id),
+  storeCategoryId: varchar("store_category_id").notNull().references(() => storeCategories.id),
+  sellPrice: decimal("sell_price", { precision: 10, scale: 2 }).notNull(),
+  purchasePrice: decimal("purchase_price", { precision: 10, scale: 2 }),
+  isAvailable: boolean("is_available").notNull().default(true),
+});
+
+export const combos = pgTable("combos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productName: text("product_name").notNull(),
+  displayName: text("display_name").notNull(),
+  image: text("image"),
+  color: text("color"),
+  shape: text("shape"),
+  categoryIds: text("category_ids").array(),
+  taxIds: text("tax_ids").array(),
+  isComboOnly: boolean("is_combo_only").notNull().default(false), // Hidden from POS if true
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const comboItems = pgTable("combo_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  comboId: varchar("combo_id").notNull().references(() => combos.id),
+  itemId: varchar("item_id").notNull().references(() => items.id),
+  quantity: integer("quantity").notNull().default(1),
+});
+
+export const comboPrices = pgTable("combo_prices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  comboId: varchar("combo_id").notNull().references(() => combos.id),
+  storeCategoryId: varchar("store_category_id").notNull().references(() => storeCategories.id),
+  sellPrice: decimal("sell_price", { precision: 10, scale: 2 }).notNull(),
+  purchasePrice: decimal("purchase_price", { precision: 10, scale: 2 }),
+  isAvailable: boolean("is_available").notNull().default(true),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -96,6 +173,38 @@ export const insertStoreSchema = createInsertSchema(stores).omit({
   createdAt: true,
 });
 
+export const insertItemCategorySchema = createInsertSchema(itemCategories).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertTaxSchema = createInsertSchema(taxes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertItemSchema = createInsertSchema(items).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertItemPriceSchema = createInsertSchema(itemPrices).omit({
+  id: true,
+});
+
+export const insertComboSchema = createInsertSchema(combos).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertComboItemSchema = createInsertSchema(comboItems).omit({
+  id: true,
+});
+
+export const insertComboPriceSchema = createInsertSchema(comboPrices).omit({
+  id: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
@@ -108,3 +217,17 @@ export type InsertStoreCategory = z.infer<typeof insertStoreCategorySchema>;
 export type StoreCategory = typeof storeCategories.$inferSelect;
 export type InsertStore = z.infer<typeof insertStoreSchema>;
 export type Store = typeof stores.$inferSelect;
+export type InsertItemCategory = z.infer<typeof insertItemCategorySchema>;
+export type ItemCategory = typeof itemCategories.$inferSelect;
+export type InsertTax = z.infer<typeof insertTaxSchema>;
+export type Tax = typeof taxes.$inferSelect;
+export type InsertItem = z.infer<typeof insertItemSchema>;
+export type Item = typeof items.$inferSelect;
+export type InsertItemPrice = z.infer<typeof insertItemPriceSchema>;
+export type ItemPrice = typeof itemPrices.$inferSelect;
+export type InsertCombo = z.infer<typeof insertComboSchema>;
+export type Combo = typeof combos.$inferSelect;
+export type InsertComboItem = z.infer<typeof insertComboItemSchema>;
+export type ComboItem = typeof comboItems.$inferSelect;
+export type InsertComboPrice = z.infer<typeof insertComboPriceSchema>;
+export type ComboPrice = typeof comboPrices.$inferSelect;
