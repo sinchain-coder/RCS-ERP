@@ -1,14 +1,34 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Users, Package, BarChart3, Settings, Store, Clipboard, LayoutDashboard } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Users, Package, BarChart3, Settings, Store as StoreIcon, Clipboard, LayoutDashboard, Plus, Edit, Trash2, Search, Filter, Eye, X } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Product } from "@shared/schema";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import type { Product, Store, StoreCategory, InsertStore, InsertStoreCategory } from "@shared/schema";
+import { insertStoreSchema } from "@shared/schema";
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [storeDetailView, setStoreDetailView] = useState<string | null>(null);
+  const [editingStore, setEditingStore] = useState<Store | null>(null);
+  const [selectedStores, setSelectedStores] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   const { data: stats } = useQuery<any>({
     queryKey: ["/api/dashboard/stats"],
@@ -18,12 +38,146 @@ export default function Admin() {
     queryKey: ["/api/admin/products"],
   });
 
+  const { data: stores } = useQuery<any>({
+    queryKey: ["/api/admin/stores"],
+  });
+
+  const { data: storeCategories } = useQuery<any>({
+    queryKey: ["/api/admin/store-categories"],
+  });
+
   const productList = (products?.data as Product[]) || [];
+  const storeList = (stores?.data as Store[]) || [];
+  const categoryList = (storeCategories?.data as StoreCategory[]) || [];
   const dashboardStats = stats?.data || { totalProducts: 0, posOrders: 0, wholesaleOrders: 0, totalOrders: 0 };
+
+  // Store form
+  const storeForm = useForm<InsertStore>({
+    resolver: zodResolver(insertStoreSchema),
+    defaultValues: {
+      name: "",
+      categoryId: "",
+      address: "",
+      city: "",
+      pincode: "",
+      state: "",
+      phone: "",
+      storePin: "",
+      upiQrCode: "",
+      isActive: true,
+    },
+  });
+
+  // Edit store form
+  const editStoreForm = useForm<InsertStore>({
+    resolver: zodResolver(insertStoreSchema),
+  });
+
+  // Mutations
+  const createStoreMutation = useMutation({
+    mutationFn: async (data: InsertStore) => {
+      return apiRequest("/api/admin/stores", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stores"] });
+      storeForm.reset();
+      toast({ title: "🏪 Store Created", description: "New store location added successfully!" });
+    },
+    onError: () => {
+      toast({ title: "❌ Error", description: "Failed to create store", variant: "destructive" });
+    },
+  });
+
+  const deleteStoreMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest(`/api/admin/stores/${id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stores"] });
+      toast({ title: "🗑️ Store Deleted", description: "Store removed successfully!" });
+    },
+  });
+
+  const updateStoreStatusMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      return apiRequest(`/api/admin/stores/${id}`, "PUT", { isActive });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stores"] });
+    },
+  });
+
+  const updateStoreMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<InsertStore> }) => {
+      return apiRequest(`/api/admin/stores/${id}`, "PUT", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stores"] });
+      setEditingStore(null);
+      editStoreForm.reset();
+      toast({ title: "🏪 Store Updated", description: "Store details updated successfully!" });
+    },
+    onError: () => {
+      toast({ title: "❌ Error", description: "Failed to update store", variant: "destructive" });
+    },
+  });
+
+  const onStoreSubmit = (data: InsertStore) => {
+    createStoreMutation.mutate(data);
+  };
+
+  const onEditStoreSubmit = (data: InsertStore) => {
+    if (editingStore) {
+      updateStoreMutation.mutate({ id: editingStore.id, data });
+    }
+  };
+
+  const handleStoreStatusToggle = (storeId: string, isActive: boolean) => {
+    updateStoreStatusMutation.mutate({ id: storeId, isActive });
+  };
+
+  const handleStoreDelete = (storeId: string) => {
+    if (confirm("🗑️ Are you sure you want to delete this store?")) {
+      deleteStoreMutation.mutate(storeId);
+    }
+  };
+
+  const handleEditStore = (store: Store) => {
+    setEditingStore(store);
+    editStoreForm.reset({
+      name: store.name,
+      categoryId: store.categoryId || "",
+      address: store.address,
+      city: store.city,
+      pincode: store.pincode,
+      state: store.state,
+      phone: store.phone,
+      storePin: store.storePin,
+      upiQrCode: store.upiQrCode || "",
+      isActive: store.isActive,
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedStores.size === 0) return;
+    if (confirm(`🗑️ Are you sure you want to delete ${selectedStores.size} selected stores?`)) {
+      selectedStores.forEach(storeId => deleteStoreMutation.mutate(storeId));
+      setSelectedStores(new Set());
+    }
+  };
+
+  const filteredStores = storeList.filter(store => {
+    const matchesSearch = store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         store.city.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = !categoryFilter || store.categoryId === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
+
+  const selectedStore = storeDetailView ? storeList.find(store => store.id === storeDetailView) : null;
 
   const navigationItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "store-master", label: "Store Master", icon: Store },
+    { id: "store-master", label: "Store Master", icon: StoreIcon },
     { id: "item-master", label: "Item Master", icon: Package },
     { id: "dispatch-checklist", label: "Dispatch Checklist", icon: Clipboard },
     { id: "settings", label: "Settings", icon: Settings },
@@ -275,31 +429,723 @@ export default function Admin() {
         )}
 
         {activeTab === "store-master" && (
-          <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-600/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-white" data-testid="text-store-master-title">
-                <div className="p-2 bg-orange-500/20 rounded-lg">
-                  <Store className="w-5 h-5 text-orange-400" />
+          <div className="space-y-6">
+            {/* Create Store Form - Top Half */}
+            <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-600/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-white" data-testid="text-store-form-title">
+                  <div className="p-2 bg-orange-500/20 rounded-lg">
+                    <Plus className="w-5 h-5 text-orange-400" />
+                  </div>
+                  🏗️ Create New Store Location
+                </CardTitle>
+                <CardDescription className="text-slate-300">
+                  Add a new store to your empire of sweet shop locations
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Form {...storeForm}>
+                  <form onSubmit={storeForm.handleSubmit(onStoreSubmit)} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {/* Store Name */}
+                      <FormField
+                        control={storeForm.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🏪 Store Name</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter store name"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-store-name"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Category */}
+                      <FormField
+                        control={storeForm.control}
+                        name="categoryId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🏷️ Category</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
+                              <FormControl>
+                                <SelectTrigger className="bg-slate-700/50 border-slate-600 text-white" data-testid="select-store-category">
+                                  <SelectValue placeholder="Select category" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {categoryList.map((category) => (
+                                  <SelectItem key={category.id} value={category.id}>
+                                    {category.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Phone */}
+                      <FormField
+                        control={storeForm.control}
+                        name="phone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">📞 Phone Number</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter phone number"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-store-phone"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Address */}
+                      <FormField
+                        control={storeForm.control}
+                        name="address"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🏠 Address</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter full address"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-store-address"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* City */}
+                      <FormField
+                        control={storeForm.control}
+                        name="city"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🏙️ City</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter city"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-store-city"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Pincode */}
+                      <FormField
+                        control={storeForm.control}
+                        name="pincode"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">📮 Pincode</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter pincode"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-store-pincode"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* State */}
+                      <FormField
+                        control={storeForm.control}
+                        name="state"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🗺️ State</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter state"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-store-state"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Store PIN */}
+                      <FormField
+                        control={storeForm.control}
+                        name="storePin"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🔐 Store PIN (POS Login)</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="4-digit PIN"
+                                type="password"
+                                maxLength={4}
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-store-pin"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* UPI QR Code */}
+                      <FormField
+                        control={storeForm.control}
+                        name="upiQrCode"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">💳 UPI QR Code</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                value={field.value || ""}
+                                placeholder="Enter UPI QR code data"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-store-upi"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-4 pt-4">
+                      <Button 
+                        type="submit"
+                        disabled={createStoreMutation.isPending}
+                        className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-8"
+                        data-testid="button-save-store"
+                      >
+                        {createStoreMutation.isPending ? (
+                          <>
+                            <span className="animate-spin mr-2">⚙️</span>
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-4 h-4 mr-2" />
+                            💾 Save Store
+                          </>
+                        )}
+                      </Button>
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        onClick={() => storeForm.reset()}
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700/50"
+                        data-testid="button-clear-form"
+                      >
+                        🧹 Clear Form
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+
+            {/* Store List Table - Bottom Half */}
+            <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-600/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-white" data-testid="text-store-list-title">
+                  <div className="p-2 bg-blue-500/20 rounded-lg">
+                    <StoreIcon className="w-5 h-5 text-blue-400" />
+                  </div>
+                  🏪 Store Empire ({filteredStores.length})
+                </CardTitle>
+                <CardDescription className="text-slate-300">
+                  Manage all your store locations and their status
+                </CardDescription>
+                {/* Search and Filter */}
+                <div className="flex gap-4 pt-4">
+                  <div className="flex-1 relative">
+                    <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <Input
+                      placeholder="🔍 Search stores..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                      data-testid="input-search-stores"
+                    />
+                  </div>
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="w-48 bg-slate-700/50 border-slate-600 text-white" data-testid="select-category-filter">
+                      <Filter className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder="🏷️ Filter by Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Categories</SelectItem>
+                      {categoryList.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedStores.size > 0 && (
+                    <Button 
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleBulkDelete}
+                      className="bg-red-600 hover:bg-red-700"
+                      data-testid="button-bulk-delete"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      🗑️ Delete ({selectedStores.size})
+                    </Button>
+                  )}
                 </div>
-                🏪 Store Command Center
-              </CardTitle>
-              <CardDescription className="text-slate-300" data-testid="text-store-master-description">
-                Manage your empire of sweet shop locations
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-16 text-slate-300" data-testid="text-store-master-placeholder">
-                <div className="text-8xl mb-6">🏗️</div>
-                <div className="text-2xl font-bold mb-4 text-white">Under Construction</div>
-                <div className="text-lg mb-2">Store Master Arena</div>
-                <div className="text-sm opacity-75">This powerful module is being crafted...</div>
-                <div className="mt-6 inline-flex items-center px-4 py-2 bg-orange-500/20 border border-orange-500/30 rounded-full">
-                  <span className="animate-spin mr-2">⚙️</span>
-                  <span className="text-orange-300">Building in Progress</span>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-lg border border-slate-600/50 bg-slate-900/30">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-600/50 hover:bg-slate-700/20">
+                        <TableHead className="text-slate-300">
+                          <Checkbox 
+                            className="border-slate-500"
+                            data-testid="checkbox-select-all-stores"
+                          />
+                        </TableHead>
+                        <TableHead className="text-slate-300">Sr No.</TableHead>
+                        <TableHead className="text-slate-300">🏪 Name</TableHead>
+                        <TableHead className="text-slate-300">🏷️ Category</TableHead>
+                        <TableHead className="text-slate-300">📍 Location</TableHead>
+                        <TableHead className="text-slate-300">📞 Phone</TableHead>
+                        <TableHead className="text-slate-300">⚡ Status</TableHead>
+                        <TableHead className="text-slate-300">🛠️ Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredStores.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-12 text-slate-400">
+                            <div className="text-6xl mb-4">🏗️</div>
+                            <div className="text-lg">No stores found</div>
+                            <div className="text-sm opacity-75">Create your first store location above!</div>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredStores.map((store, index) => {
+                          const category = categoryList.find(cat => cat.id === store.categoryId);
+                          return (
+                            <TableRow 
+                              key={store.id} 
+                              className="border-slate-600/50 hover:bg-slate-700/20"
+                              data-testid={`row-store-${store.id}`}
+                            >
+                              <TableCell>
+                                <Checkbox 
+                                  className="border-slate-500"
+                                  checked={selectedStores.has(store.id)}
+                                  onCheckedChange={(checked) => {
+                                    const newSelected = new Set(selectedStores);
+                                    if (checked) {
+                                      newSelected.add(store.id);
+                                    } else {
+                                      newSelected.delete(store.id);
+                                    }
+                                    setSelectedStores(newSelected);
+                                  }}
+                                  data-testid={`checkbox-store-${store.id}`}
+                                />
+                              </TableCell>
+                              <TableCell className="text-slate-300">{index + 1}</TableCell>
+                              <TableCell className="text-white font-medium">{store.name}</TableCell>
+                              <TableCell className="text-slate-300">{category?.name || "—"}</TableCell>
+                              <TableCell className="text-slate-300">{store.city}, {store.state}</TableCell>
+                              <TableCell className="text-slate-300">{store.phone}</TableCell>
+                              <TableCell>
+                                <Switch
+                                  checked={store.isActive}
+                                  onCheckedChange={(checked) => handleStoreStatusToggle(store.id, checked)}
+                                  className="data-[state=checked]:bg-green-500"
+                                  data-testid={`toggle-store-status-${store.id}`}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setStoreDetailView(store.id)}
+                                    className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                                    data-testid={`button-view-store-${store.id}`}
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditStore(store)}
+                                    className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
+                                    data-testid={`button-edit-store-${store.id}`}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleStoreDelete(store.id)}
+                                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                    data-testid={`button-delete-store-${store.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {/* Store Detail View Dialog */}
+            <Dialog open={!!storeDetailView} onOpenChange={() => setStoreDetailView(null)}>
+              <DialogContent className="max-w-2xl bg-gradient-to-br from-slate-800 to-slate-900 border-slate-600">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-white">
+                    <StoreIcon className="w-5 h-5 text-blue-400" />
+                    🏪 Store Details
+                  </DialogTitle>
+                  <DialogDescription className="text-slate-300">
+                    Complete information about this store location
+                  </DialogDescription>
+                </DialogHeader>
+                {selectedStore && (
+                  <div className="space-y-6 py-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">🏪 Store Name</Label>
+                        <div className="text-white font-medium">{selectedStore.name}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">🏷️ Category</Label>
+                        <div className="text-white">{categoryList.find(cat => cat.id === selectedStore.categoryId)?.name || "—"}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">📞 Phone</Label>
+                        <div className="text-white">{selectedStore.phone}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">🔐 Store PIN</Label>
+                        <div className="text-white">••••</div>
+                      </div>
+                      <div className="space-y-2 col-span-2">
+                        <Label className="text-slate-300">🏠 Address</Label>
+                        <div className="text-white">{selectedStore.address}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">🏙️ City</Label>
+                        <div className="text-white">{selectedStore.city}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">🗺️ State</Label>
+                        <div className="text-white">{selectedStore.state}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">📮 Pincode</Label>
+                        <div className="text-white">{selectedStore.pincode}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">⚡ Status</Label>
+                        <Badge variant={selectedStore.isActive ? "default" : "secondary"}>
+                          {selectedStore.isActive ? "🟢 Active" : "🔴 Inactive"}
+                        </Badge>
+                      </div>
+                      {selectedStore.upiQrCode && (
+                        <div className="space-y-2 col-span-2">
+                          <Label className="text-slate-300">💳 UPI QR Code</Label>
+                          <div className="text-white font-mono text-sm bg-slate-700/50 p-2 rounded">
+                            {selectedStore.upiQrCode}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex justify-end gap-2 pt-4 border-t border-slate-600">
+                      <Button
+                        variant="outline"
+                        onClick={() => handleEditStore(selectedStore)}
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700/50"
+                      >
+                        <Edit className="w-4 h-4 mr-2" />
+                        ✏️ Edit Store
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setStoreDetailView(null)}
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700/50"
+                      >
+                        ❌ Close
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+
+            {/* Edit Store Dialog */}
+            <Dialog open={!!editingStore} onOpenChange={() => setEditingStore(null)}>
+              <DialogContent className="max-w-4xl bg-gradient-to-br from-slate-800 to-slate-900 border-slate-600">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-white">
+                    <Edit className="w-5 h-5 text-orange-400" />
+                    ✏️ Edit Store Details
+                  </DialogTitle>
+                  <DialogDescription className="text-slate-300">
+                    Update store information and settings
+                  </DialogDescription>
+                </DialogHeader>
+                <Form {...editStoreForm}>
+                  <form onSubmit={editStoreForm.handleSubmit(onEditStoreSubmit)} className="space-y-6 py-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {/* Store Name */}
+                      <FormField
+                        control={editStoreForm.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🏪 Store Name</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter store name"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Category */}
+                      <FormField
+                        control={editStoreForm.control}
+                        name="categoryId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🏷️ Category</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
+                              <FormControl>
+                                <SelectTrigger className="bg-slate-700/50 border-slate-600 text-white">
+                                  <SelectValue placeholder="Select category" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {categoryList.map((category) => (
+                                  <SelectItem key={category.id} value={category.id}>
+                                    {category.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Phone */}
+                      <FormField
+                        control={editStoreForm.control}
+                        name="phone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">📞 Phone Number</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter phone number"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Address */}
+                      <FormField
+                        control={editStoreForm.control}
+                        name="address"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🏠 Address</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter full address"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* City */}
+                      <FormField
+                        control={editStoreForm.control}
+                        name="city"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🏙️ City</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter city"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* State */}
+                      <FormField
+                        control={editStoreForm.control}
+                        name="state"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🗺️ State</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter state"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Pincode */}
+                      <FormField
+                        control={editStoreForm.control}
+                        name="pincode"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">📮 Pincode</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter pincode"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Store PIN */}
+                      <FormField
+                        control={editStoreForm.control}
+                        name="storePin"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🔐 Store PIN (POS Login)</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="4-digit PIN"
+                                type="password"
+                                maxLength={4}
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* UPI QR Code */}
+                      <FormField
+                        control={editStoreForm.control}
+                        name="upiQrCode"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">💳 UPI QR Code</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                value={field.value || ""}
+                                placeholder="Enter UPI QR code data"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-600">
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        onClick={() => setEditingStore(null)}
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700/50"
+                      >
+                        ❌ Cancel
+                      </Button>
+                      <Button 
+                        type="submit"
+                        disabled={updateStoreMutation.isPending}
+                        className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
+                      >
+                        {updateStoreMutation.isPending ? (
+                          <>
+                            <span className="animate-spin mr-2">⚙️</span>
+                            Updating...
+                          </>
+                        ) : (
+                          <>
+                            <Edit className="w-4 h-4 mr-2" />
+                            💾 Update Store
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          </div>
         )}
 
         {activeTab === "item-master" && (
