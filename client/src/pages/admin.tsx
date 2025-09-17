@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Users, Package, BarChart3, Settings, Store as StoreIcon, Clipboard, LayoutDashboard, Plus, Edit, Trash2, Search, Filter, Eye, X } from "lucide-react";
+import { ArrowLeft, Users, Package, BarChart3, Settings, Store as StoreIcon, Clipboard, LayoutDashboard, Plus, Edit, Trash2, Search, Filter, Eye, X, Tag, List } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -18,13 +18,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Product, Store, StoreCategory, InsertStore, InsertStoreCategory } from "@shared/schema";
-import { insertStoreSchema } from "@shared/schema";
+import { insertStoreSchema, insertStoreCategorySchema } from "@shared/schema";
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [storeDetailView, setStoreDetailView] = useState<string | null>(null);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [selectedStores, setSelectedStores] = useState<Set<string>>(new Set());
+  const [editingCategory, setEditingCategory] = useState<StoreCategory | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const { toast } = useToast();
@@ -73,6 +74,21 @@ export default function Admin() {
     resolver: zodResolver(insertStoreSchema),
   });
 
+  // Category form
+  const categoryForm = useForm<InsertStoreCategory>({
+    resolver: zodResolver(insertStoreCategorySchema),
+    defaultValues: {
+      name: "",
+      color: "#3B82F6",
+      icon: "",
+    },
+  });
+
+  // Edit category form
+  const editCategoryForm = useForm<InsertStoreCategory>({
+    resolver: zodResolver(insertStoreCategorySchema),
+  });
+
   // Mutations
   const createStoreMutation = useMutation({
     mutationFn: async (data: InsertStore) => {
@@ -119,6 +135,49 @@ export default function Admin() {
     },
     onError: () => {
       toast({ title: "❌ Error", description: "Failed to update store", variant: "destructive" });
+    },
+  });
+
+  // Category mutations
+  const createCategoryMutation = useMutation({
+    mutationFn: async (data: InsertStoreCategory) => {
+      return apiRequest("/api/admin/store-categories", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/store-categories"] });
+      categoryForm.reset();
+      toast({ title: "🏷️ Category Created", description: "New store category added successfully!" });
+    },
+    onError: () => {
+      toast({ title: "❌ Error", description: "Failed to create category", variant: "destructive" });
+    },
+  });
+
+  const updateCategoryMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<InsertStoreCategory> }) => {
+      return apiRequest(`/api/admin/store-categories/${id}`, "PUT", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/store-categories"] });
+      setEditingCategory(null);
+      editCategoryForm.reset();
+      toast({ title: "🏷️ Category Updated", description: "Store category updated successfully!" });
+    },
+    onError: () => {
+      toast({ title: "❌ Error", description: "Failed to update category", variant: "destructive" });
+    },
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest(`/api/admin/store-categories/${id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/store-categories"] });
+      toast({ title: "🗑️ Category Deleted", description: "Store category removed successfully!" });
+    },
+    onError: () => {
+      toast({ title: "❌ Error", description: "Failed to delete category", variant: "destructive" });
     },
   });
 
@@ -175,9 +234,44 @@ export default function Admin() {
 
   const selectedStore = storeDetailView ? storeList.find(store => store.id === storeDetailView) : null;
 
+  const onCategorySubmit = (data: InsertStoreCategory) => {
+    createCategoryMutation.mutate(data);
+  };
+
+  const onEditCategorySubmit = (data: InsertStoreCategory) => {
+    if (editingCategory) {
+      updateCategoryMutation.mutate({ id: editingCategory.id, data });
+    }
+  };
+
+  const handleEditCategory = (category: StoreCategory) => {
+    setEditingCategory(category);
+    editCategoryForm.reset({
+      name: category.name,
+      color: category.color || "#3B82F6",
+      icon: category.icon || "",
+    });
+  };
+
+  const handleDeleteCategory = (categoryId: string) => {
+    const storeCount = storeList.filter(store => store.categoryId === categoryId).length;
+    if (storeCount > 0) {
+      toast({ 
+        title: "⚠️ Cannot Delete", 
+        description: `This category has ${storeCount} stores. Remove stores first.`, 
+        variant: "destructive" 
+      });
+      return;
+    }
+    if (confirm("🗑️ Are you sure you want to delete this category?")) {
+      deleteCategoryMutation.mutate(categoryId);
+    }
+  };
+
   const navigationItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "store-master", label: "Store Master", icon: StoreIcon },
+    { id: "store-categories", label: "Store Categories", icon: Tag },
     { id: "item-master", label: "Item Master", icon: Package },
     { id: "dispatch-checklist", label: "Dispatch Checklist", icon: Clipboard },
     { id: "settings", label: "Settings", icon: Settings },
@@ -426,6 +520,349 @@ export default function Admin() {
               </CardContent>
             </Card>
           </>
+        )}
+
+        {/* Store Categories */}
+        {activeTab === "store-categories" && (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                  🏷️ Store Categories Master
+                </h1>
+                <p className="text-slate-300 mt-2">Create and manage store categories for better organization</p>
+              </div>
+            </div>
+
+            {/* Create Category Form */}
+            <Card className="bg-slate-800/50 border-slate-700/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-white">
+                  <Plus className="w-5 h-5 text-green-400" />
+                  ➕ Create New Category
+                </CardTitle>
+                <CardDescription className="text-slate-300">
+                  Add a new store category with visual customization options
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Form {...categoryForm}>
+                  <form onSubmit={categoryForm.handleSubmit(onCategorySubmit)} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Category Name */}
+                      <FormField
+                        control={categoryForm.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🏷️ Category Name</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="e.g., Flagship Store, Express Outlet"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-category-name"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Category Color */}
+                      <FormField
+                        control={categoryForm.control}
+                        name="color"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🎨 Category Color</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                value={field.value || ""}
+                                type="color"
+                                className="bg-slate-700/50 border-slate-600 text-white h-10"
+                                data-testid="input-category-color"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Category Icon/Shape */}
+                      <FormField
+                        control={categoryForm.control}
+                        name="icon"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🔶 Category Icon</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                value={field.value || ""}
+                                placeholder="🏪 (emoji or icon name)"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-category-icon"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-4 pt-4 border-t border-slate-600/50">
+                      <Button 
+                        type="submit"
+                        disabled={createCategoryMutation.isPending}
+                        className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white"
+                        data-testid="button-create-category"
+                      >
+                        {createCategoryMutation.isPending ? (
+                          <>
+                            <span className="animate-spin mr-2">⚙️</span>
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-4 h-4 mr-2" />
+                            💾 Save Category
+                          </>
+                        )}
+                      </Button>
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        onClick={() => categoryForm.reset()}
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700/50"
+                        data-testid="button-clear-category"
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        🧹 Clear
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+
+            {/* Categories List */}
+            <Card className="bg-slate-800/50 border-slate-700/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-white">
+                  <List className="w-5 h-5 text-blue-400" />
+                  📋 Store Categories List
+                </CardTitle>
+                <CardDescription className="text-slate-300">
+                  Manage and organize your store categories
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-lg border border-slate-600/50 bg-slate-900/30">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-600/50">
+                        <TableHead className="text-slate-300">Sr No.</TableHead>
+                        <TableHead className="text-slate-300">🏷️ Name</TableHead>
+                        <TableHead className="text-slate-300">🎨 Color</TableHead>
+                        <TableHead className="text-slate-300">🔶 Icon</TableHead>
+                        <TableHead className="text-slate-300">📊 Store Count</TableHead>
+                        <TableHead className="text-slate-300">🛠️ Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {storeCategories.isLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-slate-400">
+                            <span className="animate-spin text-2xl">⚙️</span>
+                            <div className="mt-2">Loading categories...</div>
+                          </TableCell>
+                        </TableRow>
+                      ) : categoryList.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-slate-400">
+                            <div className="text-4xl mb-2">🏷️</div>
+                            <div>No categories created yet</div>
+                            <div className="text-sm">Create your first store category above!</div>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        categoryList.map((category, index) => {
+                          const storeCount = storeList.filter(store => store.categoryId === category.id).length;
+                          return (
+                            <TableRow key={category.id} className="border-slate-600/50 hover:bg-slate-700/30">
+                              <TableCell className="text-slate-200">{index + 1}</TableCell>
+                              <TableCell className="text-white font-medium">
+                                <div className="flex items-center gap-2">
+                                  {category.icon && <span>{category.icon}</span>}
+                                  {category.name}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {category.color && (
+                                  <div 
+                                    className="w-6 h-6 rounded-full border border-slate-500"
+                                    style={{ backgroundColor: category.color }}
+                                  />
+                                )}
+                              </TableCell>
+                              <TableCell className="text-slate-200">
+                                {category.icon || "—"}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={storeCount > 0 ? "default" : "secondary"}>
+                                  {storeCount} stores
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditCategory(category)}
+                                    className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
+                                    data-testid={`button-edit-category-${category.id}`}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteCategory(category.id)}
+                                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                    disabled={storeCount > 0}
+                                    data-testid={`button-delete-category-${category.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Edit Category Dialog */}
+            <Dialog open={!!editingCategory} onOpenChange={() => setEditingCategory(null)}>
+              <DialogContent className="max-w-2xl bg-gradient-to-br from-slate-800 to-slate-900 border-slate-600">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-white">
+                    <Edit className="w-5 h-5 text-orange-400" />
+                    ✏️ Edit Category Details
+                  </DialogTitle>
+                  <DialogDescription className="text-slate-300">
+                    Update category information and visual settings
+                  </DialogDescription>
+                </DialogHeader>
+                <Form {...editCategoryForm}>
+                  <form onSubmit={editCategoryForm.handleSubmit(onEditCategorySubmit)} className="space-y-6 py-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Category Name */}
+                      <FormField
+                        control={editCategoryForm.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🏷️ Category Name</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                placeholder="Enter category name"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-edit-category-name"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Category Color */}
+                      <FormField
+                        control={editCategoryForm.control}
+                        name="color"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🎨 Category Color</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                value={field.value || ""}
+                                type="color"
+                                className="bg-slate-700/50 border-slate-600 text-white h-10"
+                                data-testid="input-edit-category-color"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Category Icon */}
+                      <FormField
+                        control={editCategoryForm.control}
+                        name="icon"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🔶 Category Icon</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                value={field.value || ""}
+                                placeholder="🏪 (emoji or icon name)"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-edit-category-icon"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-600">
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        onClick={() => setEditingCategory(null)}
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700/50"
+                        data-testid="button-cancel-edit-category"
+                      >
+                        ❌ Cancel
+                      </Button>
+                      <Button 
+                        type="submit"
+                        disabled={updateCategoryMutation.isPending}
+                        className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
+                        data-testid="button-save-edit-category"
+                      >
+                        {updateCategoryMutation.isPending ? (
+                          <>
+                            <span className="animate-spin mr-2">⚙️</span>
+                            Updating...
+                          </>
+                        ) : (
+                          <>
+                            <Edit className="w-4 h-4 mr-2" />
+                            💾 Update Category
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          </div>
         )}
 
         {activeTab === "store-master" && (
