@@ -13,7 +13,17 @@ import {
   insertItemPriceSchema,
   insertComboSchema,
   insertComboItemSchema,
-  insertComboPriceSchema
+  insertComboPriceSchema,
+  insertDispatchSchema,
+  insertDispatchItemSchema,
+  insertDispatchStepSchema,
+  updateDispatchItemQuantitySchema,
+  updateDispatchStepSchema,
+  dispatchTypeEnum,
+  dispatchStatusEnum,
+  posStepEnum,
+  wholesaleStepEnum,
+  independentStepEnum
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -672,6 +682,252 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Combo price deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete combo price" });
+    }
+  });
+
+  // Dispatch Management routes
+  app.get("/api/admin/dispatches", async (req, res) => {
+    try {
+      const { type, status, orderId } = req.query;
+      let dispatches;
+      
+      if (orderId) {
+        dispatches = await storage.getDispatchesByOrder(orderId as string);
+      } else if (status) {
+        // Validate status using Zod enum
+        const validatedStatus = dispatchStatusEnum.parse(status);
+        dispatches = await storage.getDispatchesByStatus(validatedStatus);
+      } else if (type) {
+        // Validate type using Zod enum
+        const validatedType = dispatchTypeEnum.parse(type);
+        dispatches = await storage.getDispatches(validatedType);
+      } else {
+        dispatches = await storage.getDispatches();
+      }
+      
+      res.json({ message: "Dispatches fetched successfully", data: dispatches });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch dispatches" });
+    }
+  });
+
+  app.get("/api/admin/dispatches/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const dispatch = await storage.getDispatch(id);
+      if (!dispatch) {
+        return res.status(404).json({ message: "Dispatch not found" });
+      }
+      res.json({ message: "Dispatch fetched successfully", data: dispatch });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch dispatch" });
+    }
+  });
+
+  app.post("/api/admin/dispatches", async (req, res) => {
+    try {
+      const dispatchData = insertDispatchSchema.parse(req.body);
+      const dispatch = await storage.createDispatch(dispatchData);
+      res.json({ message: "Dispatch created successfully", data: dispatch });
+    } catch (error) {
+      res.status(400).json({ message: "Invalid dispatch data" });
+    }
+  });
+
+  app.put("/api/admin/dispatches/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+      const dispatch = await storage.updateDispatch(id, updateData);
+      if (!dispatch) {
+        return res.status(404).json({ message: "Dispatch not found" });
+      }
+      res.json({ message: "Dispatch updated successfully", data: dispatch });
+    } catch (error) {
+      res.status(400).json({ message: "Failed to update dispatch" });
+    }
+  });
+
+  app.delete("/api/admin/dispatches/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteDispatch(id);
+      if (!success) {
+        return res.status(404).json({ message: "Dispatch not found" });
+      }
+      res.json({ message: "Dispatch deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete dispatch" });
+    }
+  });
+
+  app.put("/api/admin/dispatches/:id/step", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { stepName } = req.body;
+      const dispatch = await storage.updateDispatchCurrentStep(id, stepName);
+      if (!dispatch) {
+        return res.status(404).json({ message: "Dispatch not found" });
+      }
+      res.json({ message: "Dispatch step updated successfully", data: dispatch });
+    } catch (error) {
+      res.status(400).json({ message: "Failed to update dispatch step" });
+    }
+  });
+
+  app.post("/api/admin/dispatches/:id/initialize-steps", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const dispatch = await storage.getDispatch(id);
+      if (!dispatch) {
+        return res.status(404).json({ message: "Dispatch not found" });
+      }
+
+      // Validate dispatch type
+      if (!['pos', 'wholesale', 'independent'].includes(dispatch.type)) {
+        return res.status(400).json({ message: "Invalid dispatch type" });
+      }
+
+      const steps = await storage.initializeDispatchSteps(id, dispatch.type as 'pos' | 'wholesale' | 'independent');
+      res.json({ message: "Dispatch steps initialized successfully", data: steps });
+    } catch (error) {
+      console.error('Initialize dispatch steps error:', error);
+      res.status(400).json({ message: "Failed to initialize dispatch steps" });
+    }
+  });
+
+  // Dispatch Items routes
+  app.get("/api/admin/dispatch-items/:dispatchId", async (req, res) => {
+    try {
+      const { dispatchId } = req.params;
+      const items = await storage.getDispatchItems(dispatchId);
+      res.json({ message: "Dispatch items fetched successfully", data: items });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch dispatch items" });
+    }
+  });
+
+  app.post("/api/admin/dispatch-items", async (req, res) => {
+    try {
+      const itemData = insertDispatchItemSchema.parse(req.body);
+      const item = await storage.createDispatchItem(itemData);
+      res.json({ message: "Dispatch item created successfully", data: item });
+    } catch (error) {
+      res.status(400).json({ message: "Invalid dispatch item data" });
+    }
+  });
+
+  app.put("/api/admin/dispatch-items/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+      const item = await storage.updateDispatchItem(id, updateData);
+      if (!item) {
+        return res.status(404).json({ message: "Dispatch item not found" });
+      }
+      res.json({ message: "Dispatch item updated successfully", data: item });
+    } catch (error) {
+      res.status(400).json({ message: "Failed to update dispatch item" });
+    }
+  });
+
+  app.put("/api/admin/dispatch-items/:id/quantity", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { quantity } = updateDispatchItemQuantitySchema.parse(req.body);
+      const item = await storage.updateDispatchItemQuantity(id, quantity);
+      if (!item) {
+        return res.status(404).json({ message: "Dispatch item not found" });
+      }
+      res.json({ message: "Dispatch item quantity updated successfully", data: item });
+    } catch (error) {
+      if (error instanceof Error) {
+        res.status(400).json({ message: error.message });
+      } else {
+        res.status(400).json({ message: "Failed to update quantity" });
+      }
+    }
+  });
+
+  app.put("/api/admin/dispatch-items/:id/toggle", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const item = await storage.toggleDispatchItemCheck(id);
+      if (!item) {
+        return res.status(404).json({ message: "Dispatch item not found" });
+      }
+      res.json({ message: "Dispatch item check toggled successfully", data: item });
+    } catch (error) {
+      res.status(400).json({ message: "Failed to toggle item check" });
+    }
+  });
+
+  // Dispatch Steps routes
+  app.get("/api/admin/dispatch-steps/:dispatchId", async (req, res) => {
+    try {
+      const { dispatchId } = req.params;
+      const steps = await storage.getDispatchSteps(dispatchId);
+      res.json({ message: "Dispatch steps fetched successfully", data: steps });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch dispatch steps" });
+    }
+  });
+
+  app.put("/api/admin/dispatch-steps/:id/complete", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { completedBy } = req.body;
+      const step = await storage.completeDispatchStep(id, completedBy);
+      if (!step) {
+        return res.status(404).json({ message: "Dispatch step not found" });
+      }
+      res.json({ message: "Dispatch step completed successfully", data: step });
+    } catch (error) {
+      res.status(400).json({ message: "Failed to complete dispatch step" });
+    }
+  });
+
+  app.post("/api/admin/dispatches/from-order/:orderId", async (req, res) => {
+    try {
+      const { orderId } = req.params;
+      const { type } = req.body;
+      
+      // Get order details
+      const order = await storage.getOrder(orderId);
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      const orderItems = await storage.getOrderItems(orderId);
+      
+      // Create dispatch from order
+      const dispatchData = insertDispatchSchema.parse({
+        orderId,
+        type: type || order.type,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        totalItems: orderItems.length,
+        status: "pending"
+      });
+
+      const dispatch = await storage.createDispatch(dispatchData);
+
+      // Create dispatch items from order items
+      for (const orderItem of orderItems) {
+        await storage.createDispatchItem({
+          dispatchId: dispatch.id,
+          orderItemId: orderItem.id,
+          productId: orderItem.productId,
+          itemName: orderItem.productId, // Will need to resolve product name
+          orderedQuantity: orderItem.quantity,
+          unitPrice: orderItem.unitPrice.toString(),
+          isChecked: false
+        });
+      }
+
+      res.json({ message: "Dispatch created from order successfully", data: dispatch });
+    } catch (error) {
+      res.status(400).json({ message: "Failed to create dispatch from order" });
     }
   });
 

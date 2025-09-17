@@ -216,6 +216,43 @@ export const insertComboPriceSchema = createInsertSchema(comboPrices).omit({
   id: true,
 });
 
+// Dispatch Management Enums
+export const dispatchTypeEnum = z.enum(["pos", "wholesale", "independent"]);
+export const dispatchStatusEnum = z.enum([
+  "pending", 
+  "in_progress", 
+  "partially_dispatched", 
+  "dispatched", 
+  "delivered", 
+  "cancelled"
+]);
+
+export const posStepEnum = z.enum([
+  "order_received",
+  "printed", 
+  "checked",
+  "dispatched",
+  "received"
+]);
+
+export const wholesaleStepEnum = z.enum([
+  "order_received",
+  "order_confirmed",
+  "payment_received", 
+  "checked",
+  "dispatched",
+  "acknowledgement_sent"
+]);
+
+export const independentStepEnum = z.enum([
+  "created",
+  "prepared",
+  "dispatched"
+]);
+
+// Union of all valid step names
+export const allStepsEnum = z.union([posStepEnum, wholesaleStepEnum, independentStepEnum]);
+
 // Dispatch Management Tables
 export const dispatches = pgTable("dispatches", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -264,15 +301,65 @@ export const insertDispatchSchema = createInsertSchema(dispatches).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
-});
+}).extend({
+  type: dispatchTypeEnum,
+  status: dispatchStatusEnum.optional(),
+  currentStep: allStepsEnum.optional(),
+  totalItems: z.number().int().min(0).optional(),
+  dispatchedItems: z.number().int().min(0).optional(),
+}).refine(
+  (data) => {
+    // Ensure dispatchedItems doesn't exceed totalItems
+    if (data.totalItems !== undefined && data.dispatchedItems !== undefined) {
+      return data.dispatchedItems <= data.totalItems;
+    }
+    return true;
+  },
+  {
+    message: "Dispatched items cannot exceed total items",
+    path: ["dispatchedItems"],
+  }
+);
 
 export const insertDispatchItemSchema = createInsertSchema(dispatchItems).omit({
   id: true,
-});
+}).extend({
+  orderedQuantity: z.number().int().min(1),
+  dispatchedQuantity: z.number().int().min(0).optional(),
+  unitPrice: z.string().refine((val) => parseFloat(val) > 0, {
+    message: "Unit price must be greater than 0",
+  }),
+}).refine(
+  (data) => {
+    // Ensure dispatched quantity doesn't exceed ordered quantity
+    if (data.dispatchedQuantity !== undefined) {
+      return data.dispatchedQuantity <= data.orderedQuantity;
+    }
+    return true;
+  },
+  {
+    message: "Dispatched quantity cannot exceed ordered quantity",
+    path: ["dispatchedQuantity"],
+  }
+);
 
 export const insertDispatchStepSchema = createInsertSchema(dispatchSteps).omit({
   id: true,
   createdAt: true,
+}).extend({
+  stepName: allStepsEnum,
+  stepOrder: z.number().int().min(1),
+});
+
+// Schema for updating dispatch step with validation
+export const updateDispatchStepSchema = z.object({
+  stepName: allStepsEnum,
+  dispatchType: dispatchTypeEnum,
+});
+
+// Schema for updating dispatch item quantity
+export const updateDispatchItemQuantitySchema = z.object({
+  quantity: z.number().int().min(0),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -307,3 +394,11 @@ export type InsertDispatchItem = z.infer<typeof insertDispatchItemSchema>;
 export type DispatchItem = typeof dispatchItems.$inferSelect;
 export type InsertDispatchStep = z.infer<typeof insertDispatchStepSchema>;
 export type DispatchStep = typeof dispatchSteps.$inferSelect;
+
+// Export TypeScript types from Zod enums
+export type DispatchType = z.infer<typeof dispatchTypeEnum>;
+export type DispatchStatus = z.infer<typeof dispatchStatusEnum>;
+export type PosStep = z.infer<typeof posStepEnum>;
+export type WholesaleStep = z.infer<typeof wholesaleStepEnum>;
+export type IndependentStep = z.infer<typeof independentStepEnum>;
+export type DispatchStepName = z.infer<typeof allStepsEnum>;

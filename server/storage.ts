@@ -30,7 +30,10 @@ import {
   type DispatchItem,
   type InsertDispatchItem,
   type DispatchStep,
-  type InsertDispatchStep
+  type InsertDispatchStep,
+  type DispatchType,
+  type DispatchStatus,
+  type DispatchStepName
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -121,14 +124,14 @@ export interface IStorage {
   deleteComboPrice(id: string): Promise<boolean>;
 
   // Dispatch management
-  getDispatches(type?: string): Promise<Dispatch[]>;
+  getDispatches(type?: DispatchType): Promise<Dispatch[]>;
   getDispatch(id: string): Promise<Dispatch | undefined>;
   createDispatch(dispatch: InsertDispatch): Promise<Dispatch>;
   updateDispatch(id: string, dispatch: Partial<InsertDispatch>): Promise<Dispatch | undefined>;
   deleteDispatch(id: string): Promise<boolean>;
   getDispatchesByOrder(orderId: string): Promise<Dispatch[]>;
-  getDispatchesByStatus(status: string): Promise<Dispatch[]>;
-  updateDispatchCurrentStep(id: string, stepName: string): Promise<Dispatch | undefined>;
+  getDispatchesByStatus(status: DispatchStatus): Promise<Dispatch[]>;
+  updateDispatchCurrentStep(id: string, stepName: DispatchStepName): Promise<Dispatch | undefined>;
 
   // Dispatch items
   getDispatchItems(dispatchId: string): Promise<DispatchItem[]>;
@@ -143,7 +146,7 @@ export interface IStorage {
   createDispatchStep(step: InsertDispatchStep): Promise<DispatchStep>;
   updateDispatchStep(id: string, step: Partial<InsertDispatchStep>): Promise<DispatchStep | undefined>;
   completeDispatchStep(id: string, completedBy?: string): Promise<DispatchStep | undefined>;
-  initializeDispatchSteps(dispatchId: string, type: 'pos' | 'wholesale' | 'independent'): Promise<DispatchStep[]>;
+  initializeDispatchSteps(dispatchId: string, type: DispatchType): Promise<DispatchStep[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -1243,15 +1246,51 @@ export class MemStorage implements IStorage {
     return Array.from(this.dispatches.values()).filter(dispatch => dispatch.orderId === orderId);
   }
 
-  async getDispatchesByStatus(status: string): Promise<Dispatch[]> {
+  async getDispatchesByStatus(status: DispatchStatus): Promise<Dispatch[]> {
     return Array.from(this.dispatches.values()).filter(dispatch => dispatch.status === status);
   }
 
-  async updateDispatchCurrentStep(id: string, stepName: string): Promise<Dispatch | undefined> {
+  async updateDispatchCurrentStep(id: string, stepName: DispatchStepName): Promise<Dispatch | undefined> {
     const dispatch = this.dispatches.get(id);
     if (!dispatch) return undefined;
 
-    return await this.updateDispatch(id, { currentStep: stepName });
+    // Validate step name is valid for dispatch type
+    const validSteps = this.getValidStepsForType(dispatch.type as DispatchType);
+    if (!validSteps.includes(stepName)) {
+      throw new Error(`Step '${stepName}' is not valid for dispatch type '${dispatch.type}'`);
+    }
+
+    // Get all steps to validate transition order
+    const allSteps = await this.getDispatchSteps(id);
+    const targetStep = allSteps.find(step => step.stepName === stepName);
+    
+    if (!targetStep) {
+      throw new Error(`Step '${stepName}' not found for this dispatch`);
+    }
+
+    // Ensure all previous steps are completed
+    const previousSteps = allSteps.filter(step => step.stepOrder < targetStep.stepOrder);
+    const uncompletedPrevious = previousSteps.find(step => !step.isCompleted);
+    
+    if (uncompletedPrevious) {
+      throw new Error(`Cannot advance to step '${stepName}' - previous step '${uncompletedPrevious.stepName}' must be completed first`);
+    }
+
+    return await this.updateDispatch(id, { 
+      currentStep: stepName,
+    });
+  }
+
+  // Helper method to get valid steps for a dispatch type
+  private getValidStepsForType(type: DispatchType): DispatchStepName[] {
+    switch (type) {
+      case 'pos':
+        return ['order_received', 'printed', 'checked', 'dispatched', 'received'] as DispatchStepName[];
+      case 'wholesale':
+        return ['order_received', 'order_confirmed', 'payment_received', 'checked', 'dispatched', 'acknowledgement_sent'] as DispatchStepName[];
+      case 'independent':
+        return ['created', 'prepared', 'dispatched'] as DispatchStepName[];
+    }
   }
 
   // Dispatch items methods
@@ -1292,7 +1331,55 @@ export class MemStorage implements IStorage {
   }
 
   async updateDispatchItemQuantity(id: string, quantity: number): Promise<DispatchItem | undefined> {
-    return await this.updateDispatchItem(id, { dispatchedQuantity: quantity });
+    // Validate quantity is non-negative
+    if (quantity < 0) {
+      throw new Error('Dispatched quantity cannot be negative');
+    }
+
+    const item = this.dispatchItems.get(id);
+    if (!item) return undefined;
+
+    // Validate quantity doesn't exceed ordered quantity
+    if (quantity > item.orderedQuantity) {
+      throw new Error('Dispatched quantity cannot exceed ordered quantity');
+    }
+
+    // Update the item
+    const updatedItem = await this.updateDispatchItem(id, { dispatchedQuantity: quantity });
+    if (!updatedItem) return undefined;
+
+    // Recompute dispatch aggregates
+    await this.recomputeDispatchAggregates(item.dispatchId);
+
+    return updatedItem;
+  }
+
+  // Helper method to recompute dispatch totals and update status
+  private async recomputeDispatchAggregates(dispatchId: string): Promise<void> {
+    const dispatch = this.dispatches.get(dispatchId);
+    if (!dispatch) return;
+
+    const dispatchItems = await this.getDispatchItems(dispatchId);
+    
+    const totalItems = dispatchItems.reduce((sum, item) => sum + item.orderedQuantity, 0);
+    const dispatchedItems = dispatchItems.reduce((sum, item) => sum + item.dispatchedQuantity, 0);
+
+    // Determine new status based on completion
+    let newStatus: DispatchStatus = dispatch.status as DispatchStatus;
+    if (dispatchedItems === 0) {
+      newStatus = (dispatch.status as DispatchStatus) === 'cancelled' ? 'cancelled' : 'pending';
+    } else if (dispatchedItems < totalItems) {
+      newStatus = 'partially_dispatched';
+    } else if (dispatchedItems === totalItems) {
+      newStatus = 'dispatched';
+    }
+
+    // Update dispatch with new totals and status
+    await this.updateDispatch(dispatchId, {
+      totalItems,
+      dispatchedItems,
+      status: newStatus,
+    });
   }
 
   async toggleDispatchItemCheck(id: string): Promise<DispatchItem | undefined> {
@@ -1338,39 +1425,107 @@ export class MemStorage implements IStorage {
   }
 
   async completeDispatchStep(id: string, completedBy?: string): Promise<DispatchStep | undefined> {
+    const step = this.dispatchSteps.get(id);
+    if (!step) return undefined;
+
+    // Get all steps for this dispatch to validate order
+    const allSteps = await this.getDispatchSteps(step.dispatchId);
+    
+    // Find the current step in the ordered list
+    const currentStepIndex = allSteps.findIndex(s => s.id === id);
+    if (currentStepIndex === -1) return undefined;
+
+    // Check if previous steps are completed (step transition validation)
+    for (let i = 0; i < currentStepIndex; i++) {
+      if (!allSteps[i].isCompleted) {
+        throw new Error(`Cannot complete step '${step.stepName}' - previous step '${allSteps[i].stepName}' must be completed first`);
+      }
+    }
+
+    // Complete the step
     const now = new Date();
-    return await this.updateDispatchStep(id, { 
+    const updatedStep = await this.updateDispatchStep(id, { 
       isCompleted: true, 
       completedAt: now,
       completedBy 
     });
+
+    if (!updatedStep) return undefined;
+
+    // Update dispatch status and current step based on completion
+    await this.updateDispatchStatusFromSteps(step.dispatchId);
+
+    return updatedStep;
   }
 
-  async initializeDispatchSteps(dispatchId: string, type: 'pos' | 'wholesale' | 'independent'): Promise<DispatchStep[]> {
-    const steps: { stepName: string; stepOrder: number }[] = [];
+  // Helper method to update dispatch status based on completed steps
+  private async updateDispatchStatusFromSteps(dispatchId: string): Promise<void> {
+    const dispatch = this.dispatches.get(dispatchId);
+    if (!dispatch) return;
+
+    const allSteps = await this.getDispatchSteps(dispatchId);
+    const completedSteps = allSteps.filter(step => step.isCompleted);
+    const lastCompletedStep = completedSteps.sort((a, b) => b.stepOrder - a.stepOrder)[0];
+
+    let newStatus: DispatchStatus = dispatch.status as DispatchStatus;
+    let newCurrentStep: DispatchStepName | undefined = dispatch.currentStep as DispatchStepName | undefined;
+
+    // Update current step to the last completed step
+    if (lastCompletedStep) {
+      newCurrentStep = lastCompletedStep.stepName as DispatchStepName;
+    }
+
+    // Update status based on step completion and dispatch type
+    if (completedSteps.length === allSteps.length) {
+      // All steps completed
+      if (dispatch.type === 'pos' && lastCompletedStep?.stepName === 'received') {
+        newStatus = 'delivered';
+      } else if (dispatch.type === 'wholesale' && lastCompletedStep?.stepName === 'acknowledgement_sent') {
+        newStatus = 'delivered';
+      } else if (dispatch.type === 'independent' && lastCompletedStep?.stepName === 'dispatched') {
+        newStatus = 'dispatched';
+      } else {
+        newStatus = 'dispatched';
+      }
+    } else if (completedSteps.length > 1) {
+      // Some steps completed but not all
+      newStatus = 'in_progress';
+    }
+
+    // Update dispatch if changes needed
+    if (newStatus !== dispatch.status || newCurrentStep !== dispatch.currentStep) {
+      await this.updateDispatch(dispatchId, {
+        status: newStatus,
+        currentStep: newCurrentStep,
+      });
+    }
+  }
+
+  async initializeDispatchSteps(dispatchId: string, type: DispatchType): Promise<DispatchStep[]> {
+    const steps: { stepName: DispatchStepName; stepOrder: number }[] = [];
     
     if (type === 'pos') {
       steps.push(
-        { stepName: 'order_received', stepOrder: 1 },
-        { stepName: 'printed', stepOrder: 2 },
-        { stepName: 'checked', stepOrder: 3 },
-        { stepName: 'dispatched', stepOrder: 4 },
-        { stepName: 'received', stepOrder: 5 }
+        { stepName: 'order_received' as DispatchStepName, stepOrder: 1 },
+        { stepName: 'printed' as DispatchStepName, stepOrder: 2 },
+        { stepName: 'checked' as DispatchStepName, stepOrder: 3 },
+        { stepName: 'dispatched' as DispatchStepName, stepOrder: 4 },
+        { stepName: 'received' as DispatchStepName, stepOrder: 5 }
       );
     } else if (type === 'wholesale') {
       steps.push(
-        { stepName: 'order_received', stepOrder: 1 },
-        { stepName: 'order_confirmed', stepOrder: 2 },
-        { stepName: 'payment_received', stepOrder: 3 },
-        { stepName: 'checked', stepOrder: 4 },
-        { stepName: 'dispatched', stepOrder: 5 },
-        { stepName: 'acknowledgement_sent', stepOrder: 6 }
+        { stepName: 'order_received' as DispatchStepName, stepOrder: 1 },
+        { stepName: 'order_confirmed' as DispatchStepName, stepOrder: 2 },
+        { stepName: 'payment_received' as DispatchStepName, stepOrder: 3 },
+        { stepName: 'checked' as DispatchStepName, stepOrder: 4 },
+        { stepName: 'dispatched' as DispatchStepName, stepOrder: 5 },
+        { stepName: 'acknowledgement_sent' as DispatchStepName, stepOrder: 6 }
       );
     } else { // independent
       steps.push(
-        { stepName: 'created', stepOrder: 1 },
-        { stepName: 'prepared', stepOrder: 2 },
-        { stepName: 'dispatched', stepOrder: 3 }
+        { stepName: 'created' as DispatchStepName, stepOrder: 1 },
+        { stepName: 'prepared' as DispatchStepName, stepOrder: 2 },
+        { stepName: 'dispatched' as DispatchStepName, stepOrder: 3 }
       );
     }
 
