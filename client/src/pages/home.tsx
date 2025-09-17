@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { Settings, ShoppingCart, Package } from "lucide-react";
 
 // Scattered playful pictograms component
 function ScatteredPictograms() {
@@ -90,34 +91,44 @@ export default function Home() {
       {/* Scattered playful background pictograms */}
       <ScatteredPictograms />
 
-      {/* Title */}
-      <h1 className="text-5xl font-bold mb-12 text-foreground relative z-10">
-        RCS-ERP
-      </h1>
+      {/* RCS Logo */}
+      <div className="mb-12 relative z-10">
+        <div className="flex items-center justify-center">
+          <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-8 py-4 rounded-2xl shadow-2xl border-4 border-yellow-400 transform rotate-1">
+            <span className="text-6xl font-bold tracking-wider font-serif">RCS</span>
+          </div>
+        </div>
+        <div className="text-center mt-2">
+          <span className="text-sm text-muted-foreground font-medium">Resource & Commerce Solutions</span>
+        </div>
+      </div>
 
       {/* Vertical Buttons - Simple with names only */}
       <div className="flex flex-col gap-6 relative z-10">
         <Link 
           href="/admin" 
           data-testid="button-admin"
-          className="block px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-primary text-primary-foreground hover:scale-105 transition-transform duration-200 min-w-[200px] text-center no-underline"
+          className="flex items-center justify-center gap-3 px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-primary text-primary-foreground hover:scale-105 transition-transform duration-200 min-w-[200px] no-underline"
         >
+          <Settings size={28} />
           Admin
         </Link>
 
         <Link 
           href="/pos" 
           data-testid="button-pos"
-          className="block px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-accent text-accent-foreground hover:scale-105 transition-transform duration-200 min-w-[200px] text-center no-underline"
+          className="flex items-center justify-center gap-3 px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-accent text-accent-foreground hover:scale-105 transition-transform duration-200 min-w-[200px] no-underline"
         >
+          <ShoppingCart size={28} />
           POS
         </Link>
 
         <Link 
           href="/wholesale" 
           data-testid="button-wholesale"
-          className="block px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-secondary text-secondary-foreground hover:scale-105 transition-transform duration-200 min-w-[200px] text-center no-underline"
+          className="flex items-center justify-center gap-3 px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-secondary text-secondary-foreground hover:scale-105 transition-transform duration-200 min-w-[200px] no-underline"
         >
+          <Package size={28} />
           Wholesale
         </Link>
       </div>
