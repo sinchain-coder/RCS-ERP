@@ -230,7 +230,7 @@ export default function Admin() {
   const filteredStores = storeList.filter(store => {
     const matchesSearch = store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          store.city.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = !categoryFilter || store.categoryId === categoryFilter;
+    const matchesCategory = !categoryFilter || categoryFilter === "all" || store.categoryId === categoryFilter;
     return matchesSearch && matchesCategory;
   });
 
@@ -1235,7 +1235,7 @@ export default function Admin() {
                       <SelectValue placeholder="🏷️ Filter by Category" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Categories</SelectItem>
+                      <SelectItem value="all">All Categories</SelectItem>
                       {categoryList.map((category) => (
                         <SelectItem key={category.id} value={category.id}>
                           {category.name}
