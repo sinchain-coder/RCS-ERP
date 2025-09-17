@@ -44,7 +44,7 @@ export default function Admin() {
     queryKey: ["/api/admin/stores"],
   });
 
-  const { data: storeCategories } = useQuery<{data: StoreCategory[]}>({
+  const { data: storeCategories, isLoading: storeCategoriesLoading } = useQuery<{data: StoreCategory[]}>({
     queryKey: ["/api/admin/store-categories"],
   });
 
@@ -131,8 +131,9 @@ export default function Admin() {
       return;
     }
     try {
-      const response = await apiRequest(`/api/admin/items/check-barcode?barcode=${encodeURIComponent(barcode)}`, "GET");
-      if (response.exists) {
+      const response = await apiRequest("GET", `/api/admin/items/check-barcode?barcode=${encodeURIComponent(barcode)}`);
+      const data = await response.json();
+      if (data.exists) {
         setBarcodeDuplicate("Item with this barcode already exists");
       } else {
         setBarcodeDuplicate("");
@@ -148,8 +149,9 @@ export default function Admin() {
       return;
     }
     try {
-      const response = await apiRequest(`/api/admin/items/check-qr?qrCode=${encodeURIComponent(qrCode)}`, "GET");
-      if (response.exists) {
+      const response = await apiRequest("GET", `/api/admin/items/check-qr?qrCode=${encodeURIComponent(qrCode)}`);
+      const data = await response.json();
+      if (data.exists) {
         setQrCodeDuplicate("Item with this QR code already exists");
       } else {
         setQrCodeDuplicate("");
@@ -182,7 +184,7 @@ export default function Admin() {
   // Mutations
   const createStoreMutation = useMutation({
     mutationFn: async (data: InsertStore) => {
-      return apiRequest("/api/admin/stores", "POST", data);
+      return apiRequest("POST", "/api/admin/stores", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stores"] });
@@ -196,7 +198,7 @@ export default function Admin() {
 
   const deleteStoreMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/admin/stores/${id}`, "DELETE");
+      return apiRequest("DELETE", `/api/admin/stores/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stores"] });
@@ -206,7 +208,7 @@ export default function Admin() {
 
   const updateStoreStatusMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
-      return apiRequest(`/api/admin/stores/${id}`, "PUT", { isActive });
+      return apiRequest("PUT", `/api/admin/stores/${id}`, { isActive });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stores"] });
@@ -215,7 +217,7 @@ export default function Admin() {
 
   const updateStoreMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<InsertStore> }) => {
-      return apiRequest(`/api/admin/stores/${id}`, "PUT", data);
+      return apiRequest("PUT", `/api/admin/stores/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stores"] });
@@ -231,7 +233,7 @@ export default function Admin() {
   // Category mutations
   const createCategoryMutation = useMutation({
     mutationFn: async (data: InsertStoreCategory) => {
-      return apiRequest("/api/admin/store-categories", "POST", data);
+      return apiRequest("POST", "/api/admin/store-categories", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/store-categories"] });
@@ -245,7 +247,7 @@ export default function Admin() {
 
   const updateCategoryMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<InsertStoreCategory> }) => {
-      return apiRequest(`/api/admin/store-categories/${id}`, "PUT", data);
+      return apiRequest("PUT", `/api/admin/store-categories/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/store-categories"] });
@@ -260,7 +262,7 @@ export default function Admin() {
 
   const deleteCategoryMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/admin/store-categories/${id}`, "DELETE");
+      return apiRequest("DELETE", `/api/admin/store-categories/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/store-categories"] });
@@ -275,8 +277,9 @@ export default function Admin() {
   const createItemMutation = useMutation({
     mutationFn: async (data: InsertItem) => {
       // First create the item
-      const itemResponse = await apiRequest("/api/admin/items", "POST", data);
-      const createdItem = itemResponse.data;
+      const itemResponse = await apiRequest("POST", "/api/admin/items", data);
+      const responseData = await itemResponse.json();
+      const createdItem = responseData.data;
       
       // Then create item prices if any are configured
       const validPrices = itemPrices.filter(price => 
@@ -293,7 +296,7 @@ export default function Admin() {
         }));
         
         await Promise.all(pricesToCreate.map(price => 
-          apiRequest("/api/admin/item-prices", "POST", price)
+          apiRequest("POST", "/api/admin/item-prices", price)
         ));
       }
       
@@ -323,7 +326,7 @@ export default function Admin() {
 
   const createItemPriceMutation = useMutation({
     mutationFn: async (prices: InsertItemPrice[]) => {
-      return Promise.all(prices.map(price => apiRequest("/api/admin/item-prices", "POST", price)));
+      return Promise.all(prices.map(price => apiRequest("POST", "/api/admin/item-prices", price)));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/item-prices"] });
@@ -342,7 +345,7 @@ export default function Admin() {
   // Item update and delete mutations
   const updateItemMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<InsertItem> }) => {
-      return apiRequest(`/api/admin/items/${id}`, "PUT", data);
+      return apiRequest("PUT", `/api/admin/items/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/items"] });
@@ -360,7 +363,7 @@ export default function Admin() {
 
   const deleteItemMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/admin/items/${id}`, "DELETE");
+      return apiRequest("DELETE", `/api/admin/items/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/items"] });
@@ -373,7 +376,7 @@ export default function Admin() {
 
   const updateItemStatusMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
-      return apiRequest(`/api/admin/items/${id}`, "PUT", { isActive });
+      return apiRequest("PUT", `/api/admin/items/${id}`, { isActive });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/items"] });
@@ -992,7 +995,7 @@ export default function Admin() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {storeCategories.isLoading ? (
+                      {storeCategoriesLoading || !storeCategories ? (
                         <TableRow>
                           <TableCell colSpan={6} className="text-center py-8 text-slate-400">
                             <span className="animate-spin text-2xl">⚙️</span>
@@ -2771,7 +2774,7 @@ export default function Admin() {
                           <SelectValue placeholder="Filter by category" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">All Categories</SelectItem>
+                          <SelectItem value="all">All Categories</SelectItem>
                           {itemCategoriesList.map((category) => (
                             <SelectItem key={category.id} value={category.id}>
                               🏷️ {category.name}
