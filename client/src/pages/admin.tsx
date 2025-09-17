@@ -481,7 +481,7 @@ export default function Admin() {
       setCustomerName("");
       setCustomerPhone("");
       setDispatchNotes("");
-      toast({ title: "🚚 Dispatch Created", description: "Independent dispatch created successfully!" });
+      toast({ title: "🚚 Dispatch Created", description: "Independent dispatch created successfully!", className: "celebration-bounce confetti-celebration" });
     },
     onError: () => {
       toast({ title: "❌ Error", description: "Failed to create independent dispatch", variant: "destructive" });
@@ -516,7 +516,7 @@ export default function Admin() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatches", "independent"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatch-steps"] });
-      toast({ title: "✅ Step Completed", description: "Dispatch step marked as complete!" });
+      toast({ title: "✅ Step Completed", description: "Dispatch step marked as complete!", className: "celebration-bounce" });
     },
     onError: () => {
       toast({ title: "❌ Error", description: "Failed to complete dispatch step", variant: "destructive" });
@@ -3979,7 +3979,7 @@ export default function Admin() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-green-400 hover:text-green-300"
+                            className="text-green-400 hover:text-green-300 gamified-button"
                             onClick={() => {
                               const maxQty = Math.min(product.stock, 10);
                               setSelectedProducts(prev => {
@@ -4088,7 +4088,7 @@ export default function Admin() {
                       });
                     }}
                     disabled={createIndependentDispatchMutation.isPending || selectedProducts.length === 0 || !customerName.trim()}
-                    className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
+                    className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 gamified-button"
                     data-testid="button-create-dispatch"
                   >
                     {createIndependentDispatchMutation.isPending ? (
@@ -4132,7 +4132,7 @@ export default function Admin() {
                       };
                       
                       return (
-                        <div key={dispatch.id} className="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                        <div key={dispatch.id} className="p-4 bg-slate-700/50 rounded-lg border border-slate-600 dispatch-card">
                           <div className="flex items-center justify-between mb-3">
                             <div>
                               <h4 className="text-white font-medium" data-testid={`dispatch-${dispatch.id}-customer`}>
@@ -4140,7 +4140,7 @@ export default function Admin() {
                               </h4>
                               <p className="text-sm text-slate-300">{dispatch.customerPhone}</p>
                             </div>
-                            <Badge className={stepColors[dispatch.currentStep as keyof typeof stepColors]} data-testid={`dispatch-${dispatch.id}-status`}>
+                            <Badge className={`${stepColors[dispatch.currentStep as keyof typeof stepColors]} ${dispatch.currentStep === 'dispatched' ? 'success-sparkle' : ''}`} data-testid={`dispatch-${dispatch.id}-status`}>
                               {dispatch.currentStep.replace('_', ' ').toUpperCase()}
                             </Badge>
                           </div>
@@ -4152,7 +4152,7 @@ export default function Admin() {
                             </div>
                             <div className="w-full bg-slate-600 rounded-full h-2">
                               <div 
-                                className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-500"
+                                className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-500 gamified-progress"
                                 style={{ width: `${progress}%` }}
                               />
                             </div>
@@ -4166,7 +4166,7 @@ export default function Admin() {
                               size="sm"
                               variant="ghost"
                               onClick={() => setSelectedDispatch(dispatch)}
-                              className="text-blue-400 hover:text-blue-300"
+                              className="text-blue-400 hover:text-blue-300 gamified-button"
                               data-testid={`button-view-dispatch-${dispatch.id}`}
                             >
                               <Eye className="w-4 h-4 mr-1" />

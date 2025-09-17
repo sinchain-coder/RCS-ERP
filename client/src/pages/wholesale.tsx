@@ -76,6 +76,7 @@ export default function Wholesale() {
       toast({
         title: "Wholesale Order Created",
         description: "Bulk order has been successfully created.",
+        className: "celebration-bounce",
       });
       setCart([]);
       setCustomerName("");
@@ -101,6 +102,7 @@ export default function Wholesale() {
       toast({
         title: "Wholesale Dispatch Created! 🎉",
         description: "Bulk order dispatch workflow has been started successfully.",
+        className: "celebration-bounce confetti-celebration",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatches"] });
       // Initialize steps for the new dispatch
@@ -129,6 +131,7 @@ export default function Wholesale() {
       toast({
         title: "Step Completed! ✨",
         description: "Excellent! Moving to the next step.",
+        className: "celebration-bounce",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatch-steps"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatches"] });
@@ -525,6 +528,7 @@ export default function Wholesale() {
                               onClick={() => createDispatchFromOrder(order.id)} 
                               size="sm"
                               disabled={createDispatchMutation.isPending}
+                              className="gamified-button"
                               data-testid={`button-create-dispatch-${order.id}`}
                             >
                               <Truck className="w-4 h-4 mr-1" />
@@ -558,7 +562,7 @@ export default function Wholesale() {
                   ) : (
                     <div className="space-y-4">
                       {dispatchesList.map((dispatch) => (
-                        <Card key={dispatch.id} className="cursor-pointer hover:shadow-md transition-shadow" data-testid={`card-dispatch-${dispatch.id}`}>
+                        <Card key={dispatch.id} className="cursor-pointer hover:shadow-md transition-shadow dispatch-card" data-testid={`card-dispatch-${dispatch.id}`}>
                           <CardContent className="p-4">
                             <div className="flex justify-between items-start mb-3">
                               <div>
@@ -579,14 +583,14 @@ export default function Wholesale() {
                                 <span data-testid={`text-progress-label-${dispatch.id}`}>Progress</span>
                                 <span data-testid={`text-progress-percent-${dispatch.id}`}>{Math.round(getDispatchProgress(dispatch))}%</span>
                               </div>
-                              <Progress value={getDispatchProgress(dispatch)} className="h-2" />
+                              <Progress value={getDispatchProgress(dispatch)} className="h-2 gamified-progress" />
                             </div>
 
                             <Button 
                               onClick={() => setSelectedDispatch(dispatch)} 
                               size="sm" 
                               variant="outline" 
-                              className="w-full"
+                              className="w-full gamified-button"
                               data-testid={`button-view-dispatch-${dispatch.id}`}
                             >
                               <Eye className="w-4 h-4 mr-1" />
@@ -627,11 +631,11 @@ export default function Wholesale() {
                                 onClick={() => completeStepMutation.mutate({ stepId: step.id, stepName: step.stepName })}
                                 disabled={step.isCompleted || completeStepMutation.isPending}
                                 size="sm"
-                                className={getWholesaleStepColor(step.stepName, step.isCompleted)}
+                                className={`${getWholesaleStepColor(step.stepName, step.isCompleted)} ${step.isCompleted ? 'dispatch-step-completed' : 'gamified-button'}`}
                                 data-testid={`button-step-${step.id}`}
                               >
                                 {step.isCompleted ? (
-                                  <CheckCircle className="w-4 h-4" />
+                                  <CheckCircle className="w-4 h-4 success-sparkle" />
                                 ) : (
                                   <StepIcon className="w-4 h-4" />
                                 )}
@@ -641,7 +645,7 @@ export default function Wholesale() {
                                   {step.stepName.replace('_', ' ').toUpperCase()}
                                 </p>
                                 {step.isCompleted && (
-                                  <p className="text-xs text-muted-foreground" data-testid={`text-step-completed-${step.id}`}>
+                                  <p className="text-xs text-muted-foreground success-sparkle" data-testid={`text-step-completed-${step.id}`}>
                                     Completed ✨
                                   </p>
                                 )}

@@ -80,6 +80,7 @@ export default function POS() {
       toast({
         title: "Order Created",
         description: "Order has been successfully created.",
+        className: "celebration-bounce",
       });
       setCart([]);
       setCustomerName("");
@@ -105,6 +106,7 @@ export default function POS() {
       toast({
         title: "Dispatch Created! 🎉",
         description: "Dispatch workflow has been started successfully.",
+        className: "celebration-bounce confetti-celebration",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatches"] });
       // Initialize steps for the new dispatch
@@ -133,6 +135,7 @@ export default function POS() {
       toast({
         title: "Step Completed! ✨",
         description: "Great job! Moving to the next step.",
+        className: "celebration-bounce",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatch-steps"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatches"] });
@@ -492,6 +495,7 @@ export default function POS() {
                                 onClick={() => createDispatchFromOrder(order.id)}
                                 disabled={createDispatchMutation.isPending}
                                 size="sm"
+                                className="gamified-button"
                                 data-testid={`button-create-dispatch-${order.id}`}
                               >
                                 <Sparkles className="w-4 h-4 mr-2" />
@@ -528,7 +532,7 @@ export default function POS() {
                     ) : (
                       <div className="space-y-4">
                         {dispatchesList.map((dispatch: Dispatch) => (
-                          <div key={dispatch.id} className="border border-border rounded-lg p-4" data-testid={`card-dispatch-${dispatch.id}`}>
+                          <div key={dispatch.id} className="border border-border rounded-lg p-4 dispatch-card" data-testid={`card-dispatch-${dispatch.id}`}>
                             <div className="flex justify-between items-start mb-3">
                               <div>
                                 <h3 className="font-semibold" data-testid={`text-dispatch-id-${dispatch.id}`}>
@@ -553,7 +557,7 @@ export default function POS() {
                               </div>
                               <Progress 
                                 value={getDispatchProgress(dispatch)} 
-                                className="h-2"
+                                className="h-2 gamified-progress"
                                 data-testid={`progress-dispatch-${dispatch.id}`}
                               />
                             </div>
@@ -587,14 +591,14 @@ export default function POS() {
                                           const StepIcon = getStepIcon(step.stepName);
                                           return (
                                             <div key={step.id} className="text-center">
-                                              <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 ${getStepColor(step.stepName, step.isCompleted)}`}>
+                                              <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 ${getStepColor(step.stepName, step.isCompleted)} ${step.isCompleted ? 'dispatch-step-completed' : ''}`}>
                                                 <StepIcon className="w-6 h-6" />
                                               </div>
                                               <p className="text-xs font-medium capitalize">
                                                 {step.stepName.replace('_', ' ')}
                                               </p>
                                               {step.isCompleted ? (
-                                                <CheckCircle className="w-4 h-4 text-green-500 mx-auto mt-1" />
+                                                <CheckCircle className="w-4 h-4 text-green-500 mx-auto mt-1 success-sparkle" />
                                               ) : (
                                                 <div className="w-4 h-4 mx-auto mt-1"></div>
                                               )}
@@ -603,7 +607,7 @@ export default function POS() {
                                                   onClick={() => completeStepMutation.mutate({ stepId: step.id, stepName: step.stepName })}
                                                   disabled={completeStepMutation.isPending}
                                                   size="sm"
-                                                  className="mt-2"
+                                                  className="mt-2 gamified-button"
                                                   data-testid={`button-complete-step-${step.id}`}
                                                 >
                                                   Complete
