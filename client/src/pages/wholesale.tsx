@@ -95,8 +95,15 @@ export default function Wholesale() {
   // Wholesale dispatch mutations
   const createDispatchMutation = useMutation({
     mutationFn: async (data: { orderId?: string, type: string }) => {
-      const response = await apiRequest("POST", "/api/admin/dispatches", data);
-      return response.json();
+      // Use the correct endpoint that populates customerName and totalItems from order data
+      if (data.orderId) {
+        const response = await apiRequest("POST", `/api/admin/dispatches/from-order/${data.orderId}`, { type: data.type });
+        return response.json();
+      } else {
+        // Fallback for direct dispatch creation (not from existing orders)
+        const response = await apiRequest("POST", "/api/admin/dispatches", data);
+        return response.json();
+      }
     },
     onSuccess: (response: any) => {
       toast({
@@ -274,6 +281,11 @@ export default function Wholesale() {
       customerPhone,
       totalAmount: cartTotal.toFixed(2),
       status: "pending", // wholesale orders need approval
+      items: cart.map(item => ({
+        productId: item.id,
+        quantity: item.quantity,
+        price: parseFloat(item.unitPrice)
+      }))
     };
 
     createOrderMutation.mutate(orderData);

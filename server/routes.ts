@@ -978,11 +978,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/wholesale/orders", async (req, res) => {
     try {
-      const orderData = { ...req.body, type: "wholesale" };
+      const { items, ...orderFields } = req.body;
+      const orderData = { ...orderFields, type: "wholesale" };
       const validatedOrder = insertOrderSchema.parse(orderData);
+      
+      // Create the order first
       const order = await storage.createOrder(validatedOrder);
+      
+      // Create order items if items array is provided
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          const orderItemData = {
+            orderId: order.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.price.toString(), // Convert to string for decimal type
+            subtotal: (item.quantity * item.price).toFixed(2), // Calculate subtotal
+          };
+          
+          await storage.createOrderItem(orderItemData);
+        }
+      }
+      
       res.json({ message: "Wholesale order created successfully", data: order });
     } catch (error) {
+      console.error("Wholesale order creation error:", error);
       res.status(400).json({ message: "Invalid wholesale order data" });
     }
   });
