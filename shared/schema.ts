@@ -216,6 +216,65 @@ export const insertComboPriceSchema = createInsertSchema(comboPrices).omit({
   id: true,
 });
 
+// Dispatch Management Tables
+export const dispatches = pgTable("dispatches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").references(() => orders.id), // Optional - can be independent dispatch
+  type: text("type").notNull(), // "pos", "wholesale", "independent"
+  status: text("status").notNull().default("pending"), // pending, in_progress, partially_dispatched, dispatched, delivered, cancelled
+  currentStep: text("current_step").notNull().default("order_received"), // For step progression
+  customerName: text("customer_name"),
+  customerPhone: text("customer_phone"),
+  storeId: varchar("store_id").references(() => stores.id), // For POS orders
+  totalItems: integer("total_items").notNull().default(0),
+  dispatchedItems: integer("dispatched_items").notNull().default(0),
+  acknowledgementPhoto: text("acknowledgement_photo"), // For wholesale orders
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const dispatchItems = pgTable("dispatch_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  dispatchId: varchar("dispatch_id").notNull().references(() => dispatches.id),
+  itemId: varchar("item_id").references(() => items.id), // For new item system
+  productId: varchar("product_id").references(() => products.id), // For legacy products
+  orderItemId: varchar("order_item_id").references(() => orderItems.id), // Link to original order item
+  itemName: text("item_name").notNull(),
+  orderedQuantity: integer("ordered_quantity").notNull(),
+  dispatchedQuantity: integer("dispatched_quantity").notNull().default(0),
+  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  isChecked: boolean("is_checked").notNull().default(false), // For checklist UI
+  notes: text("notes"),
+});
+
+export const dispatchSteps = pgTable("dispatch_steps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  dispatchId: varchar("dispatch_id").notNull().references(() => dispatches.id),
+  stepName: text("step_name").notNull(), // order_received, printed, checked, dispatched, delivered, etc.
+  stepOrder: integer("step_order").notNull(),
+  isCompleted: boolean("is_completed").notNull().default(false),
+  completedAt: timestamp("completed_at"),
+  completedBy: varchar("completed_by").references(() => users.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDispatchSchema = createInsertSchema(dispatches).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertDispatchItemSchema = createInsertSchema(dispatchItems).omit({
+  id: true,
+});
+
+export const insertDispatchStepSchema = createInsertSchema(dispatchSteps).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
@@ -242,3 +301,9 @@ export type InsertComboItem = z.infer<typeof insertComboItemSchema>;
 export type ComboItem = typeof comboItems.$inferSelect;
 export type InsertComboPrice = z.infer<typeof insertComboPriceSchema>;
 export type ComboPrice = typeof comboPrices.$inferSelect;
+export type InsertDispatch = z.infer<typeof insertDispatchSchema>;
+export type Dispatch = typeof dispatches.$inferSelect;
+export type InsertDispatchItem = z.infer<typeof insertDispatchItemSchema>;
+export type DispatchItem = typeof dispatchItems.$inferSelect;
+export type InsertDispatchStep = z.infer<typeof insertDispatchStepSchema>;
+export type DispatchStep = typeof dispatchSteps.$inferSelect;

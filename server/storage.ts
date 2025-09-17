@@ -24,7 +24,13 @@ import {
   type ComboItem,
   type InsertComboItem,
   type ComboPrice,
-  type InsertComboPrice
+  type InsertComboPrice,
+  type Dispatch,
+  type InsertDispatch,
+  type DispatchItem,
+  type InsertDispatchItem,
+  type DispatchStep,
+  type InsertDispatchStep
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -113,6 +119,31 @@ export interface IStorage {
   createComboPrice(price: InsertComboPrice): Promise<ComboPrice>;
   updateComboPrice(id: string, price: Partial<InsertComboPrice>): Promise<ComboPrice | undefined>;
   deleteComboPrice(id: string): Promise<boolean>;
+
+  // Dispatch management
+  getDispatches(type?: string): Promise<Dispatch[]>;
+  getDispatch(id: string): Promise<Dispatch | undefined>;
+  createDispatch(dispatch: InsertDispatch): Promise<Dispatch>;
+  updateDispatch(id: string, dispatch: Partial<InsertDispatch>): Promise<Dispatch | undefined>;
+  deleteDispatch(id: string): Promise<boolean>;
+  getDispatchesByOrder(orderId: string): Promise<Dispatch[]>;
+  getDispatchesByStatus(status: string): Promise<Dispatch[]>;
+  updateDispatchCurrentStep(id: string, stepName: string): Promise<Dispatch | undefined>;
+
+  // Dispatch items
+  getDispatchItems(dispatchId: string): Promise<DispatchItem[]>;
+  createDispatchItem(item: InsertDispatchItem): Promise<DispatchItem>;
+  updateDispatchItem(id: string, item: Partial<InsertDispatchItem>): Promise<DispatchItem | undefined>;
+  deleteDispatchItem(id: string): Promise<boolean>;
+  updateDispatchItemQuantity(id: string, quantity: number): Promise<DispatchItem | undefined>;
+  toggleDispatchItemCheck(id: string): Promise<DispatchItem | undefined>;
+
+  // Dispatch steps
+  getDispatchSteps(dispatchId: string): Promise<DispatchStep[]>;
+  createDispatchStep(step: InsertDispatchStep): Promise<DispatchStep>;
+  updateDispatchStep(id: string, step: Partial<InsertDispatchStep>): Promise<DispatchStep | undefined>;
+  completeDispatchStep(id: string, completedBy?: string): Promise<DispatchStep | undefined>;
+  initializeDispatchSteps(dispatchId: string, type: 'pos' | 'wholesale' | 'independent'): Promise<DispatchStep[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -129,6 +160,9 @@ export class MemStorage implements IStorage {
   private combos: Map<string, Combo>;
   private comboItems: Map<string, ComboItem>;
   private comboPrices: Map<string, ComboPrice>;
+  private dispatches: Map<string, Dispatch>;
+  private dispatchItems: Map<string, DispatchItem>;
+  private dispatchSteps: Map<string, DispatchStep>;
 
   constructor() {
     this.users = new Map();
@@ -144,6 +178,9 @@ export class MemStorage implements IStorage {
     this.combos = new Map();
     this.comboItems = new Map();
     this.comboPrices = new Map();
+    this.dispatches = new Map();
+    this.dispatchItems = new Map();
+    this.dispatchSteps = new Map();
     
     // Initialize with sample data
     this.initializeSampleData();
@@ -1139,6 +1176,216 @@ export class MemStorage implements IStorage {
 
   async deleteComboPrice(id: string): Promise<boolean> {
     return this.comboPrices.delete(id);
+  }
+
+  // Dispatch management methods
+  async getDispatches(type?: string): Promise<Dispatch[]> {
+    const allDispatches = Array.from(this.dispatches.values());
+    return type ? allDispatches.filter(dispatch => dispatch.type === type) : allDispatches;
+  }
+
+  async getDispatch(id: string): Promise<Dispatch | undefined> {
+    return this.dispatches.get(id);
+  }
+
+  async createDispatch(insertDispatch: InsertDispatch): Promise<Dispatch> {
+    const id = randomUUID();
+    const now = new Date();
+    const dispatch: Dispatch = {
+      id,
+      ...insertDispatch,
+      status: insertDispatch.status || "pending",
+      currentStep: insertDispatch.currentStep || "order_received",
+      customerName: insertDispatch.customerName ?? null,
+      customerPhone: insertDispatch.customerPhone ?? null,
+      orderId: insertDispatch.orderId ?? null,
+      storeId: insertDispatch.storeId ?? null,
+      totalItems: insertDispatch.totalItems ?? 0,
+      dispatchedItems: insertDispatch.dispatchedItems ?? 0,
+      acknowledgementPhoto: insertDispatch.acknowledgementPhoto ?? null,
+      notes: insertDispatch.notes ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.dispatches.set(id, dispatch);
+    
+    // Initialize dispatch steps based on type
+    await this.initializeDispatchSteps(id, insertDispatch.type as 'pos' | 'wholesale' | 'independent');
+    
+    return dispatch;
+  }
+
+  async updateDispatch(id: string, updateData: Partial<InsertDispatch>): Promise<Dispatch | undefined> {
+    const dispatch = this.dispatches.get(id);
+    if (!dispatch) return undefined;
+
+    const updatedDispatch: Dispatch = {
+      ...dispatch,
+      ...updateData,
+      updatedAt: new Date(),
+    };
+    this.dispatches.set(id, updatedDispatch);
+    return updatedDispatch;
+  }
+
+  async deleteDispatch(id: string): Promise<boolean> {
+    // Also delete related dispatch items and steps
+    const dispatchItems = Array.from(this.dispatchItems.values()).filter(item => item.dispatchId === id);
+    const dispatchSteps = Array.from(this.dispatchSteps.values()).filter(step => step.dispatchId === id);
+    
+    dispatchItems.forEach(item => this.dispatchItems.delete(item.id));
+    dispatchSteps.forEach(step => this.dispatchSteps.delete(step.id));
+    
+    return this.dispatches.delete(id);
+  }
+
+  async getDispatchesByOrder(orderId: string): Promise<Dispatch[]> {
+    return Array.from(this.dispatches.values()).filter(dispatch => dispatch.orderId === orderId);
+  }
+
+  async getDispatchesByStatus(status: string): Promise<Dispatch[]> {
+    return Array.from(this.dispatches.values()).filter(dispatch => dispatch.status === status);
+  }
+
+  async updateDispatchCurrentStep(id: string, stepName: string): Promise<Dispatch | undefined> {
+    const dispatch = this.dispatches.get(id);
+    if (!dispatch) return undefined;
+
+    return await this.updateDispatch(id, { currentStep: stepName });
+  }
+
+  // Dispatch items methods
+  async getDispatchItems(dispatchId: string): Promise<DispatchItem[]> {
+    return Array.from(this.dispatchItems.values()).filter(item => item.dispatchId === dispatchId);
+  }
+
+  async createDispatchItem(insertItem: InsertDispatchItem): Promise<DispatchItem> {
+    const id = randomUUID();
+    const item: DispatchItem = {
+      id,
+      ...insertItem,
+      productId: insertItem.productId ?? null,
+      itemId: insertItem.itemId ?? null,
+      orderItemId: insertItem.orderItemId ?? null,
+      notes: insertItem.notes ?? null,
+      dispatchedQuantity: insertItem.dispatchedQuantity ?? 0,
+      isChecked: insertItem.isChecked ?? false,
+    };
+    this.dispatchItems.set(id, item);
+    return item;
+  }
+
+  async updateDispatchItem(id: string, updateData: Partial<InsertDispatchItem>): Promise<DispatchItem | undefined> {
+    const item = this.dispatchItems.get(id);
+    if (!item) return undefined;
+
+    const updatedItem: DispatchItem = {
+      ...item,
+      ...updateData,
+    };
+    this.dispatchItems.set(id, updatedItem);
+    return updatedItem;
+  }
+
+  async deleteDispatchItem(id: string): Promise<boolean> {
+    return this.dispatchItems.delete(id);
+  }
+
+  async updateDispatchItemQuantity(id: string, quantity: number): Promise<DispatchItem | undefined> {
+    return await this.updateDispatchItem(id, { dispatchedQuantity: quantity });
+  }
+
+  async toggleDispatchItemCheck(id: string): Promise<DispatchItem | undefined> {
+    const item = this.dispatchItems.get(id);
+    if (!item) return undefined;
+    
+    return await this.updateDispatchItem(id, { isChecked: !item.isChecked });
+  }
+
+  // Dispatch steps methods
+  async getDispatchSteps(dispatchId: string): Promise<DispatchStep[]> {
+    return Array.from(this.dispatchSteps.values())
+      .filter(step => step.dispatchId === dispatchId)
+      .sort((a, b) => a.stepOrder - b.stepOrder);
+  }
+
+  async createDispatchStep(insertStep: InsertDispatchStep): Promise<DispatchStep> {
+    const id = randomUUID();
+    const now = new Date();
+    const step: DispatchStep = {
+      id,
+      ...insertStep,
+      notes: insertStep.notes ?? null,
+      isCompleted: insertStep.isCompleted ?? false,
+      completedAt: insertStep.completedAt ?? null,
+      completedBy: insertStep.completedBy ?? null,
+      createdAt: now,
+    };
+    this.dispatchSteps.set(id, step);
+    return step;
+  }
+
+  async updateDispatchStep(id: string, updateData: Partial<InsertDispatchStep>): Promise<DispatchStep | undefined> {
+    const step = this.dispatchSteps.get(id);
+    if (!step) return undefined;
+
+    const updatedStep: DispatchStep = {
+      ...step,
+      ...updateData,
+    };
+    this.dispatchSteps.set(id, updatedStep);
+    return updatedStep;
+  }
+
+  async completeDispatchStep(id: string, completedBy?: string): Promise<DispatchStep | undefined> {
+    const now = new Date();
+    return await this.updateDispatchStep(id, { 
+      isCompleted: true, 
+      completedAt: now,
+      completedBy 
+    });
+  }
+
+  async initializeDispatchSteps(dispatchId: string, type: 'pos' | 'wholesale' | 'independent'): Promise<DispatchStep[]> {
+    const steps: { stepName: string; stepOrder: number }[] = [];
+    
+    if (type === 'pos') {
+      steps.push(
+        { stepName: 'order_received', stepOrder: 1 },
+        { stepName: 'printed', stepOrder: 2 },
+        { stepName: 'checked', stepOrder: 3 },
+        { stepName: 'dispatched', stepOrder: 4 },
+        { stepName: 'received', stepOrder: 5 }
+      );
+    } else if (type === 'wholesale') {
+      steps.push(
+        { stepName: 'order_received', stepOrder: 1 },
+        { stepName: 'order_confirmed', stepOrder: 2 },
+        { stepName: 'payment_received', stepOrder: 3 },
+        { stepName: 'checked', stepOrder: 4 },
+        { stepName: 'dispatched', stepOrder: 5 },
+        { stepName: 'acknowledgement_sent', stepOrder: 6 }
+      );
+    } else { // independent
+      steps.push(
+        { stepName: 'created', stepOrder: 1 },
+        { stepName: 'prepared', stepOrder: 2 },
+        { stepName: 'dispatched', stepOrder: 3 }
+      );
+    }
+
+    const createdSteps: DispatchStep[] = [];
+    for (const stepData of steps) {
+      const step = await this.createDispatchStep({
+        dispatchId,
+        ...stepData,
+        isCompleted: stepData.stepOrder === 1, // First step is auto-completed
+        completedAt: stepData.stepOrder === 1 ? new Date() : undefined,
+      });
+      createdSteps.push(step);
+    }
+
+    return createdSteps;
   }
 }
 
