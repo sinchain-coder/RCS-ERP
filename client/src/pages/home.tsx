@@ -30,7 +30,7 @@ function ScatteredPictograms() {
       {pictograms.map((item) => (
         <div
           key={item.id}
-          className="absolute opacity-15 animate-pulse"
+          className="absolute opacity-20 animate-pulse"
           style={{
             left: item.x,
             top: item.y,
@@ -97,22 +97,28 @@ export default function Home() {
 
       {/* Vertical Buttons - Simple with names only */}
       <div className="flex flex-col gap-6 relative z-10">
-        <Link href="/admin" data-testid="button-admin">
-          <button className="px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-primary text-primary-foreground hover:scale-105 transition-transform duration-200 min-w-[200px]">
-            Admin
-          </button>
+        <Link 
+          href="/admin" 
+          data-testid="button-admin"
+          className="block px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-primary text-primary-foreground hover:scale-105 transition-transform duration-200 min-w-[200px] text-center no-underline"
+        >
+          Admin
         </Link>
 
-        <Link href="/pos" data-testid="button-pos">
-          <button className="px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-accent text-accent-foreground hover:scale-105 transition-transform duration-200 min-w-[200px]">
-            POS
-          </button>
+        <Link 
+          href="/pos" 
+          data-testid="button-pos"
+          className="block px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-accent text-accent-foreground hover:scale-105 transition-transform duration-200 min-w-[200px] text-center no-underline"
+        >
+          POS
         </Link>
 
-        <Link href="/wholesale" data-testid="button-wholesale">
-          <button className="px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-secondary text-secondary-foreground hover:scale-105 transition-transform duration-200 min-w-[200px]">
-            Wholesale
-          </button>
+        <Link 
+          href="/wholesale" 
+          data-testid="button-wholesale"
+          className="block px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-secondary text-secondary-foreground hover:scale-105 transition-transform duration-200 min-w-[200px] text-center no-underline"
+        >
+          Wholesale
         </Link>
       </div>
     </div>
