@@ -316,6 +316,13 @@ export class MemStorage implements IStorage {
   }
 
   async createStoreCategory(insertCategory: InsertStoreCategory): Promise<StoreCategory> {
+    // Check for duplicate name
+    const existingByName = Array.from(this.storeCategories.values())
+      .find(cat => cat.name.toLowerCase() === insertCategory.name.toLowerCase());
+    if (existingByName) {
+      throw new Error(`Store category with name '${insertCategory.name}' already exists`);
+    }
+
     const id = randomUUID();
     const category: StoreCategory = {
       ...insertCategory,
@@ -334,6 +341,15 @@ export class MemStorage implements IStorage {
     const category = this.storeCategories.get(id);
     if (!category) return undefined;
 
+    // Check for duplicate name (excluding current category)
+    if (updateData.name) {
+      const existingByName = Array.from(this.storeCategories.values())
+        .find(cat => cat.id !== id && cat.name.toLowerCase() === updateData.name!.toLowerCase());
+      if (existingByName) {
+        throw new Error(`Another store category with name '${updateData.name}' already exists`);
+      }
+    }
+
     const updatedCategory: StoreCategory = {
       ...category,
       ...updateData,
@@ -343,6 +359,27 @@ export class MemStorage implements IStorage {
   }
 
   async deleteStoreCategory(id: string): Promise<boolean> {
+    // Check if category is used by stores
+    const usedByStores = Array.from(this.stores.values())
+      .some(store => store.categoryId === id);
+    if (usedByStores) {
+      throw new Error('Cannot delete store category because it is used by one or more stores');
+    }
+
+    // Check if category is used by item prices
+    const usedByItemPrices = Array.from(this.itemPrices.values())
+      .some(price => price.storeCategoryId === id);
+    if (usedByItemPrices) {
+      throw new Error('Cannot delete store category because it has associated item prices');
+    }
+
+    // Check if category is used by combo prices
+    const usedByComboPrices = Array.from(this.comboPrices.values())
+      .some(price => price.storeCategoryId === id);
+    if (usedByComboPrices) {
+      throw new Error('Cannot delete store category because it has associated combo prices');
+    }
+
     return this.storeCategories.delete(id);
   }
 
@@ -356,6 +393,21 @@ export class MemStorage implements IStorage {
   }
 
   async createStore(insertStore: InsertStore): Promise<Store> {
+    // Validate store pin uniqueness
+    const existingByPin = Array.from(this.stores.values())
+      .find(store => store.storePin === insertStore.storePin);
+    if (existingByPin) {
+      throw new Error(`Store with PIN '${insertStore.storePin}' already exists`);
+    }
+
+    // Validate referenced store category exists
+    if (insertStore.categoryId) {
+      const category = await this.getStoreCategory(insertStore.categoryId);
+      if (!category) {
+        throw new Error(`Store category with ID '${insertStore.categoryId}' does not exist`);
+      }
+    }
+
     const id = randomUUID();
     const store: Store = {
       ...insertStore,
@@ -373,6 +425,23 @@ export class MemStorage implements IStorage {
     const store = this.stores.get(id);
     if (!store) return undefined;
 
+    // Validate store pin uniqueness (excluding current store)
+    if (updateData.storePin) {
+      const existingByPin = Array.from(this.stores.values())
+        .find(s => s.id !== id && s.storePin === updateData.storePin);
+      if (existingByPin) {
+        throw new Error(`Another store with PIN '${updateData.storePin}' already exists`);
+      }
+    }
+
+    // Validate referenced store category exists
+    if (updateData.categoryId) {
+      const category = await this.getStoreCategory(updateData.categoryId);
+      if (!category) {
+        throw new Error(`Store category with ID '${updateData.categoryId}' does not exist`);
+      }
+    }
+
     const updatedStore: Store = {
       ...store,
       ...updateData,
@@ -382,6 +451,8 @@ export class MemStorage implements IStorage {
   }
 
   async deleteStore(id: string): Promise<boolean> {
+    // For now, we don't have direct foreign key constraints to stores
+    // But in the future, we might want to check for orders linked to stores
     return this.stores.delete(id);
   }
 
@@ -395,6 +466,13 @@ export class MemStorage implements IStorage {
   }
 
   async createItemCategory(insertCategory: InsertItemCategory): Promise<ItemCategory> {
+    // Check for duplicate name
+    const existingByName = Array.from(this.itemCategories.values())
+      .find(cat => cat.name.toLowerCase() === insertCategory.name.toLowerCase());
+    if (existingByName) {
+      throw new Error(`Item category with name '${insertCategory.name}' already exists`);
+    }
+
     const id = randomUUID();
     const category: ItemCategory = {
       ...insertCategory,
@@ -414,6 +492,15 @@ export class MemStorage implements IStorage {
     const category = this.itemCategories.get(id);
     if (!category) return undefined;
 
+    // Check for duplicate name (excluding current category)
+    if (updateData.name) {
+      const existingByName = Array.from(this.itemCategories.values())
+        .find(cat => cat.id !== id && cat.name.toLowerCase() === updateData.name!.toLowerCase());
+      if (existingByName) {
+        throw new Error(`Another item category with name '${updateData.name}' already exists`);
+      }
+    }
+
     const updatedCategory: ItemCategory = {
       ...category,
       ...updateData,
@@ -423,6 +510,20 @@ export class MemStorage implements IStorage {
   }
 
   async deleteItemCategory(id: string): Promise<boolean> {
+    // Check if category is used by items
+    const usedByItems = Array.from(this.items.values())
+      .some(item => item.categoryIds && item.categoryIds.includes(id));
+    if (usedByItems) {
+      throw new Error('Cannot delete item category because it is used by one or more items');
+    }
+
+    // Check if category is used by combos
+    const usedByCombos = Array.from(this.combos.values())
+      .some(combo => combo.categoryIds && combo.categoryIds.includes(id));
+    if (usedByCombos) {
+      throw new Error('Cannot delete item category because it is used by one or more combos');
+    }
+
     return this.itemCategories.delete(id);
   }
 
@@ -436,6 +537,19 @@ export class MemStorage implements IStorage {
   }
 
   async createTax(insertTax: InsertTax): Promise<Tax> {
+    // Check for duplicate name
+    const existingByName = Array.from(this.taxes.values())
+      .find(tax => tax.name.toLowerCase() === insertTax.name.toLowerCase());
+    if (existingByName) {
+      throw new Error(`Tax with name '${insertTax.name}' already exists`);
+    }
+
+    // Validate tax rate bounds
+    const rate = parseFloat(insertTax.rate);
+    if (rate < 0 || rate > 100) {
+      throw new Error('Tax rate must be between 0% and 100%');
+    }
+
     const id = randomUUID();
     const tax: Tax = {
       ...insertTax,
@@ -452,6 +566,23 @@ export class MemStorage implements IStorage {
     const tax = this.taxes.get(id);
     if (!tax) return undefined;
 
+    // Check for duplicate name (excluding current tax)
+    if (updateData.name) {
+      const existingByName = Array.from(this.taxes.values())
+        .find(t => t.id !== id && t.name.toLowerCase() === updateData.name!.toLowerCase());
+      if (existingByName) {
+        throw new Error(`Another tax with name '${updateData.name}' already exists`);
+      }
+    }
+
+    // Validate tax rate bounds if being updated
+    if (updateData.rate !== undefined) {
+      const rate = parseFloat(updateData.rate);
+      if (rate < 0 || rate > 100) {
+        throw new Error('Tax rate must be between 0% and 100%');
+      }
+    }
+
     const updatedTax: Tax = {
       ...tax,
       ...updateData,
@@ -461,6 +592,20 @@ export class MemStorage implements IStorage {
   }
 
   async deleteTax(id: string): Promise<boolean> {
+    // Check if tax is used by items
+    const usedByItems = Array.from(this.items.values())
+      .some(item => item.taxIds && item.taxIds.includes(id));
+    if (usedByItems) {
+      throw new Error('Cannot delete tax because it is used by one or more items');
+    }
+
+    // Check if tax is used by combos
+    const usedByCombos = Array.from(this.combos.values())
+      .some(combo => combo.taxIds && combo.taxIds.includes(id));
+    if (usedByCombos) {
+      throw new Error('Cannot delete tax because it is used by one or more combos');
+    }
+
     return this.taxes.delete(id);
   }
 
@@ -474,6 +619,50 @@ export class MemStorage implements IStorage {
   }
 
   async createItem(insertItem: InsertItem): Promise<Item> {
+    // Validate barcode uniqueness
+    if (insertItem.barcode) {
+      const existingByBarcode = await this.getItemByBarcode(insertItem.barcode);
+      if (existingByBarcode) {
+        throw new Error(`Item with barcode '${insertItem.barcode}' already exists`);
+      }
+    }
+
+    // Validate QR code uniqueness
+    if (insertItem.qrCode) {
+      const existingByQr = await this.getItemByQrCode(insertItem.qrCode);
+      if (existingByQr) {
+        throw new Error(`Item with QR code '${insertItem.qrCode}' already exists`);
+      }
+    }
+
+    // Validate referenced categories exist
+    if (insertItem.categoryIds) {
+      for (const categoryId of insertItem.categoryIds) {
+        const category = await this.getItemCategory(categoryId);
+        if (!category) {
+          throw new Error(`Item category with ID '${categoryId}' does not exist`);
+        }
+      }
+    }
+
+    // Validate referenced taxes exist
+    if (insertItem.taxIds) {
+      for (const taxId of insertItem.taxIds) {
+        const tax = await this.getTax(taxId);
+        if (!tax) {
+          throw new Error(`Tax with ID '${taxId}' does not exist`);
+        }
+      }
+    }
+
+    // Validate bounds
+    if (insertItem.masterPackSize && insertItem.masterPackSize < 1) {
+      throw new Error('Master pack size must be at least 1');
+    }
+    if (insertItem.lowStockValue && insertItem.lowStockValue < 0) {
+      throw new Error('Low stock value cannot be negative');
+    }
+
     const id = randomUUID();
     const item: Item = {
       ...insertItem,
@@ -499,6 +688,50 @@ export class MemStorage implements IStorage {
     const item = this.items.get(id);
     if (!item) return undefined;
 
+    // Validate barcode uniqueness (excluding current item)
+    if (updateData.barcode) {
+      const existingByBarcode = await this.getItemByBarcode(updateData.barcode);
+      if (existingByBarcode && existingByBarcode.id !== id) {
+        throw new Error(`Another item with barcode '${updateData.barcode}' already exists`);
+      }
+    }
+
+    // Validate QR code uniqueness (excluding current item)
+    if (updateData.qrCode) {
+      const existingByQr = await this.getItemByQrCode(updateData.qrCode);
+      if (existingByQr && existingByQr.id !== id) {
+        throw new Error(`Another item with QR code '${updateData.qrCode}' already exists`);
+      }
+    }
+
+    // Validate referenced categories exist
+    if (updateData.categoryIds) {
+      for (const categoryId of updateData.categoryIds) {
+        const category = await this.getItemCategory(categoryId);
+        if (!category) {
+          throw new Error(`Item category with ID '${categoryId}' does not exist`);
+        }
+      }
+    }
+
+    // Validate referenced taxes exist
+    if (updateData.taxIds) {
+      for (const taxId of updateData.taxIds) {
+        const tax = await this.getTax(taxId);
+        if (!tax) {
+          throw new Error(`Tax with ID '${taxId}' does not exist`);
+        }
+      }
+    }
+
+    // Validate bounds
+    if (updateData.masterPackSize && updateData.masterPackSize < 1) {
+      throw new Error('Master pack size must be at least 1');
+    }
+    if (updateData.lowStockValue && updateData.lowStockValue < 0) {
+      throw new Error('Low stock value cannot be negative');
+    }
+
     const updatedItem: Item = {
       ...item,
       ...updateData,
@@ -508,6 +741,20 @@ export class MemStorage implements IStorage {
   }
 
   async deleteItem(id: string): Promise<boolean> {
+    // Check if item is used by item prices
+    const usedByItemPrices = Array.from(this.itemPrices.values())
+      .some(price => price.itemId === id);
+    if (usedByItemPrices) {
+      throw new Error('Cannot delete item because it has associated prices');
+    }
+
+    // Check if item is used by combo items
+    const usedByComboItems = Array.from(this.comboItems.values())
+      .some(comboItem => comboItem.itemId === id);
+    if (usedByComboItems) {
+      throw new Error('Cannot delete item because it is used in one or more combos');
+    }
+
     return this.items.delete(id);
   }
 
@@ -530,6 +777,38 @@ export class MemStorage implements IStorage {
   }
 
   async createItemPrice(insertPrice: InsertItemPrice): Promise<ItemPrice> {
+    // Validate referenced item exists
+    const item = await this.getItem(insertPrice.itemId);
+    if (!item) {
+      throw new Error(`Item with ID '${insertPrice.itemId}' does not exist`);
+    }
+
+    // Validate referenced store category exists
+    const storeCategory = await this.getStoreCategory(insertPrice.storeCategoryId);
+    if (!storeCategory) {
+      throw new Error(`Store category with ID '${insertPrice.storeCategoryId}' does not exist`);
+    }
+
+    // Check for duplicate price entry (same item + store category)
+    const existingPrice = Array.from(this.itemPrices.values())
+      .find(p => p.itemId === insertPrice.itemId && p.storeCategoryId === insertPrice.storeCategoryId);
+    if (existingPrice) {
+      throw new Error('Price already exists for this item and store category combination');
+    }
+
+    // Validate price values
+    const sellPrice = parseFloat(insertPrice.sellPrice);
+    if (sellPrice <= 0) {
+      throw new Error('Sell price must be greater than 0');
+    }
+
+    if (insertPrice.purchasePrice) {
+      const purchasePrice = parseFloat(insertPrice.purchasePrice);
+      if (purchasePrice <= 0) {
+        throw new Error('Purchase price must be greater than 0');
+      }
+    }
+
     const id = randomUUID();
     const price: ItemPrice = {
       ...insertPrice,
@@ -544,6 +823,49 @@ export class MemStorage implements IStorage {
   async updateItemPrice(id: string, updateData: Partial<InsertItemPrice>): Promise<ItemPrice | undefined> {
     const price = this.itemPrices.get(id);
     if (!price) return undefined;
+
+    // Validate referenced item exists if being updated
+    if (updateData.itemId) {
+      const item = await this.getItem(updateData.itemId);
+      if (!item) {
+        throw new Error(`Item with ID '${updateData.itemId}' does not exist`);
+      }
+    }
+
+    // Validate referenced store category exists if being updated
+    if (updateData.storeCategoryId) {
+      const storeCategory = await this.getStoreCategory(updateData.storeCategoryId);
+      if (!storeCategory) {
+        throw new Error(`Store category with ID '${updateData.storeCategoryId}' does not exist`);
+      }
+    }
+
+    // Check for duplicate if item or store category being changed
+    if (updateData.itemId || updateData.storeCategoryId) {
+      const newItemId = updateData.itemId || price.itemId;
+      const newStoreCategoryId = updateData.storeCategoryId || price.storeCategoryId;
+      
+      const existingPrice = Array.from(this.itemPrices.values())
+        .find(p => p.id !== id && p.itemId === newItemId && p.storeCategoryId === newStoreCategoryId);
+      if (existingPrice) {
+        throw new Error('Another price already exists for this item and store category combination');
+      }
+    }
+
+    // Validate price values
+    if (updateData.sellPrice !== undefined) {
+      const sellPrice = parseFloat(updateData.sellPrice);
+      if (sellPrice <= 0) {
+        throw new Error('Sell price must be greater than 0');
+      }
+    }
+
+    if (updateData.purchasePrice) {
+      const purchasePrice = parseFloat(updateData.purchasePrice);
+      if (purchasePrice <= 0) {
+        throw new Error('Purchase price must be greater than 0');
+      }
+    }
 
     const updatedPrice: ItemPrice = {
       ...price,
@@ -567,6 +889,26 @@ export class MemStorage implements IStorage {
   }
 
   async createCombo(insertCombo: InsertCombo): Promise<Combo> {
+    // Validate referenced categories exist
+    if (insertCombo.categoryIds) {
+      for (const categoryId of insertCombo.categoryIds) {
+        const category = await this.getItemCategory(categoryId);
+        if (!category) {
+          throw new Error(`Item category with ID '${categoryId}' does not exist`);
+        }
+      }
+    }
+
+    // Validate referenced taxes exist
+    if (insertCombo.taxIds) {
+      for (const taxId of insertCombo.taxIds) {
+        const tax = await this.getTax(taxId);
+        if (!tax) {
+          throw new Error(`Tax with ID '${taxId}' does not exist`);
+        }
+      }
+    }
+
     const id = randomUUID();
     const combo: Combo = {
       ...insertCombo,
@@ -588,6 +930,26 @@ export class MemStorage implements IStorage {
     const combo = this.combos.get(id);
     if (!combo) return undefined;
 
+    // Validate referenced categories exist
+    if (updateData.categoryIds) {
+      for (const categoryId of updateData.categoryIds) {
+        const category = await this.getItemCategory(categoryId);
+        if (!category) {
+          throw new Error(`Item category with ID '${categoryId}' does not exist`);
+        }
+      }
+    }
+
+    // Validate referenced taxes exist
+    if (updateData.taxIds) {
+      for (const taxId of updateData.taxIds) {
+        const tax = await this.getTax(taxId);
+        if (!tax) {
+          throw new Error(`Tax with ID '${taxId}' does not exist`);
+        }
+      }
+    }
+
     const updatedCombo: Combo = {
       ...combo,
       ...updateData,
@@ -597,6 +959,20 @@ export class MemStorage implements IStorage {
   }
 
   async deleteCombo(id: string): Promise<boolean> {
+    // Check if combo has associated items
+    const hasComboItems = Array.from(this.comboItems.values())
+      .some(comboItem => comboItem.comboId === id);
+    if (hasComboItems) {
+      throw new Error('Cannot delete combo because it has associated items');
+    }
+
+    // Check if combo has associated prices
+    const hasComboPrices = Array.from(this.comboPrices.values())
+      .some(price => price.comboId === id);
+    if (hasComboPrices) {
+      throw new Error('Cannot delete combo because it has associated prices');
+    }
+
     return this.combos.delete(id);
   }
 
@@ -606,6 +982,30 @@ export class MemStorage implements IStorage {
   }
 
   async createComboItem(insertComboItem: InsertComboItem): Promise<ComboItem> {
+    // Validate referenced combo exists
+    const combo = await this.getCombo(insertComboItem.comboId);
+    if (!combo) {
+      throw new Error(`Combo with ID '${insertComboItem.comboId}' does not exist`);
+    }
+
+    // Validate referenced item exists
+    const item = await this.getItem(insertComboItem.itemId);
+    if (!item) {
+      throw new Error(`Item with ID '${insertComboItem.itemId}' does not exist`);
+    }
+
+    // Check for duplicate combo item (same combo + item)
+    const existingComboItem = Array.from(this.comboItems.values())
+      .find(ci => ci.comboId === insertComboItem.comboId && ci.itemId === insertComboItem.itemId);
+    if (existingComboItem) {
+      throw new Error('Item is already added to this combo');
+    }
+
+    // Validate quantity
+    if (insertComboItem.quantity && insertComboItem.quantity < 1) {
+      throw new Error('Quantity must be at least 1');
+    }
+
     const id = randomUUID();
     const comboItem: ComboItem = {
       ...insertComboItem,
@@ -639,6 +1039,38 @@ export class MemStorage implements IStorage {
   }
 
   async createComboPrice(insertPrice: InsertComboPrice): Promise<ComboPrice> {
+    // Validate referenced combo exists
+    const combo = await this.getCombo(insertPrice.comboId);
+    if (!combo) {
+      throw new Error(`Combo with ID '${insertPrice.comboId}' does not exist`);
+    }
+
+    // Validate referenced store category exists
+    const storeCategory = await this.getStoreCategory(insertPrice.storeCategoryId);
+    if (!storeCategory) {
+      throw new Error(`Store category with ID '${insertPrice.storeCategoryId}' does not exist`);
+    }
+
+    // Check for duplicate price entry (same combo + store category)
+    const existingPrice = Array.from(this.comboPrices.values())
+      .find(p => p.comboId === insertPrice.comboId && p.storeCategoryId === insertPrice.storeCategoryId);
+    if (existingPrice) {
+      throw new Error('Price already exists for this combo and store category combination');
+    }
+
+    // Validate price values
+    const sellPrice = parseFloat(insertPrice.sellPrice);
+    if (sellPrice <= 0) {
+      throw new Error('Sell price must be greater than 0');
+    }
+
+    if (insertPrice.purchasePrice) {
+      const purchasePrice = parseFloat(insertPrice.purchasePrice);
+      if (purchasePrice <= 0) {
+        throw new Error('Purchase price must be greater than 0');
+      }
+    }
+
     const id = randomUUID();
     const price: ComboPrice = {
       ...insertPrice,
@@ -653,6 +1085,49 @@ export class MemStorage implements IStorage {
   async updateComboPrice(id: string, updateData: Partial<InsertComboPrice>): Promise<ComboPrice | undefined> {
     const price = this.comboPrices.get(id);
     if (!price) return undefined;
+
+    // Validate referenced combo exists if being updated
+    if (updateData.comboId) {
+      const combo = await this.getCombo(updateData.comboId);
+      if (!combo) {
+        throw new Error(`Combo with ID '${updateData.comboId}' does not exist`);
+      }
+    }
+
+    // Validate referenced store category exists if being updated
+    if (updateData.storeCategoryId) {
+      const storeCategory = await this.getStoreCategory(updateData.storeCategoryId);
+      if (!storeCategory) {
+        throw new Error(`Store category with ID '${updateData.storeCategoryId}' does not exist`);
+      }
+    }
+
+    // Check for duplicate if combo or store category being changed
+    if (updateData.comboId || updateData.storeCategoryId) {
+      const newComboId = updateData.comboId || price.comboId;
+      const newStoreCategoryId = updateData.storeCategoryId || price.storeCategoryId;
+      
+      const existingPrice = Array.from(this.comboPrices.values())
+        .find(p => p.id !== id && p.comboId === newComboId && p.storeCategoryId === newStoreCategoryId);
+      if (existingPrice) {
+        throw new Error('Another price already exists for this combo and store category combination');
+      }
+    }
+
+    // Validate price values
+    if (updateData.sellPrice !== undefined) {
+      const sellPrice = parseFloat(updateData.sellPrice);
+      if (sellPrice <= 0) {
+        throw new Error('Sell price must be greater than 0');
+      }
+    }
+
+    if (updateData.purchasePrice) {
+      const purchasePrice = parseFloat(updateData.purchasePrice);
+      if (purchasePrice <= 0) {
+        throw new Error('Purchase price must be greater than 0');
+      }
+    }
 
     const updatedPrice: ComboPrice = {
       ...price,

@@ -99,7 +99,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const category = await storage.createStoreCategory(categoryData);
       res.json({ message: "Store category created successfully", data: category });
     } catch (error) {
-      res.status(400).json({ message: "Invalid store category data" });
+      if (error instanceof Error && error.message.includes('already exists')) {
+        res.status(409).json({ message: error.message });
+      } else {
+        console.error('Store category creation error:', error);
+        res.status(400).json({ message: "Invalid store category data" });
+      }
     }
   });
 
@@ -113,7 +118,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json({ message: "Store category updated successfully", data: category });
     } catch (error) {
-      res.status(400).json({ message: "Failed to update store category" });
+      if (error instanceof Error && error.message.includes('already exists')) {
+        res.status(409).json({ message: error.message });
+      } else {
+        console.error('Store category update error:', error);
+        res.status(400).json({ message: "Failed to update store category" });
+      }
     }
   });
 
@@ -126,7 +136,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json({ message: "Store category deleted successfully" });
     } catch (error) {
-      res.status(500).json({ message: "Failed to delete store category" });
+      if (error instanceof Error && error.message.includes('Cannot delete')) {
+        res.status(409).json({ message: error.message });
+      } else {
+        console.error('Store category deletion error:', error);
+        res.status(500).json({ message: "Failed to delete store category" });
+      }
     }
   });
 
@@ -159,7 +174,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const store = await storage.createStore(storeData);
       res.json({ message: "Store created successfully", data: store });
     } catch (error) {
-      res.status(400).json({ message: "Invalid store data" });
+      if (error instanceof Error) {
+        if (error.message.includes('already exists')) {
+          res.status(409).json({ message: error.message });
+        } else if (error.message.includes('does not exist')) {
+          res.status(400).json({ message: error.message });
+        } else {
+          console.error('Store creation error:', error);
+          res.status(400).json({ message: "Invalid store data" });
+        }
+      } else {
+        console.error('Store creation error:', error);
+        res.status(400).json({ message: "Invalid store data" });
+      }
     }
   });
 
@@ -173,7 +200,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json({ message: "Store updated successfully", data: store });
     } catch (error) {
-      res.status(400).json({ message: "Failed to update store" });
+      if (error instanceof Error) {
+        if (error.message.includes('already exists')) {
+          res.status(409).json({ message: error.message });
+        } else if (error.message.includes('does not exist')) {
+          res.status(400).json({ message: error.message });
+        } else {
+          console.error('Store update error:', error);
+          res.status(400).json({ message: "Failed to update store" });
+        }
+      } else {
+        console.error('Store update error:', error);
+        res.status(400).json({ message: "Failed to update store" });
+      }
     }
   });
 
@@ -206,7 +245,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const category = await storage.createItemCategory(categoryData);
       res.json({ message: "Item category created successfully", data: category });
     } catch (error) {
-      res.status(400).json({ message: "Invalid item category data" });
+      if (error instanceof Error && error.message.includes('already exists')) {
+        res.status(409).json({ message: error.message });
+      } else {
+        console.error('Item category creation error:', error);
+        res.status(400).json({ message: "Invalid item category data" });
+      }
     }
   });
 
@@ -233,7 +277,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json({ message: "Item category deleted successfully" });
     } catch (error) {
-      res.status(500).json({ message: "Failed to delete item category" });
+      if (error instanceof Error && error.message.includes('Cannot delete')) {
+        res.status(409).json({ message: error.message });
+      } else {
+        console.error('Item category deletion error:', error);
+        res.status(500).json({ message: "Failed to delete item category" });
+      }
     }
   });
 
@@ -253,7 +302,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tax = await storage.createTax(taxData);
       res.json({ message: "Tax created successfully", data: tax });
     } catch (error) {
-      res.status(400).json({ message: "Invalid tax data" });
+      if (error instanceof Error) {
+        if (error.message.includes('already exists')) {
+          res.status(409).json({ message: error.message });
+        } else if (error.message.includes('must be between')) {
+          res.status(400).json({ message: error.message });
+        } else {
+          console.error('Tax creation error:', error);
+          res.status(400).json({ message: "Invalid tax data" });
+        }
+      } else {
+        console.error('Tax creation error:', error);
+        res.status(400).json({ message: "Invalid tax data" });
+      }
     }
   });
 
@@ -267,7 +328,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json({ message: "Tax updated successfully", data: tax });
     } catch (error) {
-      res.status(400).json({ message: "Failed to update tax" });
+      if (error instanceof Error) {
+        if (error.message.includes('already exists')) {
+          res.status(409).json({ message: error.message });
+        } else if (error.message.includes('must be between')) {
+          res.status(400).json({ message: error.message });
+        } else {
+          console.error('Tax update error:', error);
+          res.status(400).json({ message: "Failed to update tax" });
+        }
+      } else {
+        console.error('Tax update error:', error);
+        res.status(400).json({ message: "Failed to update tax" });
+      }
     }
   });
 
@@ -280,7 +353,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json({ message: "Tax deleted successfully" });
     } catch (error) {
-      res.status(500).json({ message: "Failed to delete tax" });
+      if (error instanceof Error && error.message.includes('Cannot delete')) {
+        res.status(409).json({ message: error.message });
+      } else {
+        console.error('Tax deletion error:', error);
+        res.status(500).json({ message: "Failed to delete tax" });
+      }
     }
   });
 
@@ -310,25 +388,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/items", async (req, res) => {
     try {
       const itemData = insertItemSchema.parse(req.body);
-      
-      // Check for duplicate barcode or QR code
-      if (itemData.barcode) {
-        const existingByBarcode = await storage.getItemByBarcode(itemData.barcode);
-        if (existingByBarcode) {
-          return res.status(400).json({ message: "Item with this barcode already exists" });
-        }
-      }
-      if (itemData.qrCode) {
-        const existingByQr = await storage.getItemByQrCode(itemData.qrCode);
-        if (existingByQr) {
-          return res.status(400).json({ message: "Item with this QR code already exists" });
-        }
-      }
-
       const item = await storage.createItem(itemData);
       res.json({ message: "Item created successfully", data: item });
     } catch (error) {
-      res.status(400).json({ message: "Invalid item data" });
+      if (error instanceof Error) {
+        if (error.message.includes('already exists')) {
+          res.status(409).json({ message: error.message });
+        } else if (error.message.includes('does not exist')) {
+          res.status(400).json({ message: error.message });
+        } else if (error.message.includes('must be at least') || error.message.includes('cannot be negative')) {
+          res.status(400).json({ message: error.message });
+        } else {
+          console.error('Item creation error:', error);
+          res.status(400).json({ message: "Invalid item data" });
+        }
+      } else {
+        console.error('Item creation error:', error);
+        res.status(400).json({ message: "Invalid item data" });
+      }
     }
   });
 
@@ -336,28 +413,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const updateData = req.body;
-      
-      // Check for duplicate barcode or QR code (excluding current item)
-      if (updateData.barcode) {
-        const existingByBarcode = await storage.getItemByBarcode(updateData.barcode);
-        if (existingByBarcode && existingByBarcode.id !== id) {
-          return res.status(400).json({ message: "Another item with this barcode already exists" });
-        }
-      }
-      if (updateData.qrCode) {
-        const existingByQr = await storage.getItemByQrCode(updateData.qrCode);
-        if (existingByQr && existingByQr.id !== id) {
-          return res.status(400).json({ message: "Another item with this QR code already exists" });
-        }
-      }
-
       const item = await storage.updateItem(id, updateData);
       if (!item) {
         return res.status(404).json({ message: "Item not found" });
       }
       res.json({ message: "Item updated successfully", data: item });
     } catch (error) {
-      res.status(400).json({ message: "Failed to update item" });
+      if (error instanceof Error) {
+        if (error.message.includes('already exists')) {
+          res.status(409).json({ message: error.message });
+        } else if (error.message.includes('does not exist')) {
+          res.status(400).json({ message: error.message });
+        } else if (error.message.includes('must be at least') || error.message.includes('cannot be negative')) {
+          res.status(400).json({ message: error.message });
+        } else {
+          console.error('Item update error:', error);
+          res.status(400).json({ message: "Failed to update item" });
+        }
+      } else {
+        console.error('Item update error:', error);
+        res.status(400).json({ message: "Failed to update item" });
+      }
     }
   });
 
@@ -370,7 +446,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json({ message: "Item deleted successfully" });
     } catch (error) {
-      res.status(500).json({ message: "Failed to delete item" });
+      if (error instanceof Error && error.message.includes('Cannot delete')) {
+        res.status(409).json({ message: error.message });
+      } else {
+        console.error('Item deletion error:', error);
+        res.status(500).json({ message: "Failed to delete item" });
+      }
+    }
+  });
+
+  // Check barcode availability
+  app.get("/api/admin/items/check-barcode/:barcode", async (req, res) => {
+    try {
+      const { barcode } = req.params;
+      const existingItem = await storage.getItemByBarcode(barcode);
+      res.json({ 
+        available: !existingItem,
+        existingItem: existingItem || null,
+        message: existingItem ? "Barcode already exists" : "Barcode is available"
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to check barcode availability" });
+    }
+  });
+
+  // Check QR code availability
+  app.get("/api/admin/items/check-qr/:qr", async (req, res) => {
+    try {
+      const { qr } = req.params;
+      const existingItem = await storage.getItemByQrCode(qr);
+      res.json({ 
+        available: !existingItem,
+        existingItem: existingItem || null,
+        message: existingItem ? "QR code already exists" : "QR code is available"
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to check QR code availability" });
     }
   });
 

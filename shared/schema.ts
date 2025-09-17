@@ -186,7 +186,18 @@ export const insertTaxSchema = createInsertSchema(taxes).omit({
 export const insertItemSchema = createInsertSchema(items).omit({
   id: true,
   createdAt: true,
-});
+}).refine(
+  (data) => {
+    // XOR validation: either barcode OR qrCode, not both
+    const hasBarcode = data.barcode && data.barcode.trim() !== '';
+    const hasQrCode = data.qrCode && data.qrCode.trim() !== '';
+    return !(hasBarcode && hasQrCode); // Both cannot be present
+  },
+  {
+    message: "Cannot have both barcode and QR code. Choose one or neither.",
+    path: ["barcode"], // Show error on barcode field
+  }
+);
 
 export const insertItemPriceSchema = createInsertSchema(itemPrices).omit({
   id: true,
