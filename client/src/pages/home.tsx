@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Settings, ShoppingCart, Package } from "lucide-react";
+import { Shield, ShoppingCart, Package } from "lucide-react";
 
 // Scattered playful pictograms component
 function ScatteredPictograms() {
@@ -123,7 +123,7 @@ export default function Home() {
           data-testid="button-admin"
           className="flex items-center justify-center gap-3 px-12 py-4 text-2xl font-semibold rounded-xl shadow-lg bg-primary text-primary-foreground hover:scale-105 transition-transform duration-200 min-w-[200px] no-underline"
         >
-          <Settings size={28} />
+          <Shield size={28} />
           Admin
         </Link>
 
