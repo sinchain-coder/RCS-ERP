@@ -80,7 +80,9 @@ export default function Admin() {
     defaultValues: {
       name: "",
       color: "#3B82F6",
-      icon: "",
+      image: "",
+      shape: "",
+      isActive: true,
     },
   });
 
@@ -249,7 +251,9 @@ export default function Admin() {
     editCategoryForm.reset({
       name: category.name,
       color: category.color || "#3B82F6",
-      icon: category.icon || "",
+      image: category.image || "",
+      shape: category.shape || "",
+      isActive: category.isActive,
     });
   };
 
@@ -549,7 +553,7 @@ export default function Admin() {
               <CardContent>
                 <Form {...categoryForm}>
                   <form onSubmit={categoryForm.handleSubmit(onCategorySubmit)} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       {/* Category Name */}
                       <FormField
                         control={categoryForm.control}
@@ -591,20 +595,60 @@ export default function Admin() {
                         )}
                       />
 
-                      {/* Category Icon/Shape */}
+                      {/* Category Image */}
                       <FormField
                         control={categoryForm.control}
-                        name="icon"
+                        name="image"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-white">🔶 Category Icon</FormLabel>
+                            <FormLabel className="text-white">🖼️ Category Image URL</FormLabel>
                             <FormControl>
                               <Input 
                                 {...field}
                                 value={field.value || ""}
-                                placeholder="🏪 (emoji or icon name)"
+                                placeholder="Optional image URL"
                                 className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
-                                data-testid="input-category-icon"
+                                data-testid="input-category-image"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Category Shape */}
+                      <FormField
+                        control={categoryForm.control}
+                        name="shape"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🔶 Category Shape</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                value={field.value || ""}
+                                placeholder="🏪 (emoji or shape)"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-category-shape"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Category Active Status */}
+                      <FormField
+                        control={categoryForm.control}
+                        name="isActive"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center space-x-2">
+                            <FormLabel className="text-white">⚡ Active Status</FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                data-testid="switch-category-active"
                               />
                             </FormControl>
                             <FormMessage />
@@ -668,7 +712,9 @@ export default function Admin() {
                         <TableHead className="text-slate-300">Sr No.</TableHead>
                         <TableHead className="text-slate-300">🏷️ Name</TableHead>
                         <TableHead className="text-slate-300">🎨 Color</TableHead>
-                        <TableHead className="text-slate-300">🔶 Icon</TableHead>
+                        <TableHead className="text-slate-300">🖼️ Image</TableHead>
+                        <TableHead className="text-slate-300">🔶 Shape</TableHead>
+                        <TableHead className="text-slate-300">⚡ Status</TableHead>
                         <TableHead className="text-slate-300">📊 Store Count</TableHead>
                         <TableHead className="text-slate-300">🛠️ Actions</TableHead>
                       </TableRow>
@@ -697,7 +743,7 @@ export default function Admin() {
                               <TableCell className="text-slate-200">{index + 1}</TableCell>
                               <TableCell className="text-white font-medium">
                                 <div className="flex items-center gap-2">
-                                  {category.icon && <span>{category.icon}</span>}
+                                  {category.shape && <span>{category.shape}</span>}
                                   {category.name}
                                 </div>
                               </TableCell>
@@ -710,7 +756,17 @@ export default function Admin() {
                                 )}
                               </TableCell>
                               <TableCell className="text-slate-200">
-                                {category.icon || "—"}
+                                {category.image ? (
+                                  <img src={category.image} alt="Category" className="w-6 h-6 rounded object-cover" />
+                                ) : "—"}
+                              </TableCell>
+                              <TableCell className="text-slate-200">
+                                {category.shape || "—"}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={category.isActive ? "default" : "secondary"}>
+                                  {category.isActive ? "🟢 Active" : "🔴 Inactive"}
+                                </Badge>
                               </TableCell>
                               <TableCell>
                                 <Badge variant={storeCount > 0 ? "default" : "secondary"}>
@@ -764,7 +820,7 @@ export default function Admin() {
                 </DialogHeader>
                 <Form {...editCategoryForm}>
                   <form onSubmit={editCategoryForm.handleSubmit(onEditCategorySubmit)} className="space-y-6 py-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       {/* Category Name */}
                       <FormField
                         control={editCategoryForm.control}
@@ -806,20 +862,60 @@ export default function Admin() {
                         )}
                       />
 
-                      {/* Category Icon */}
+                      {/* Category Image */}
                       <FormField
                         control={editCategoryForm.control}
-                        name="icon"
+                        name="image"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-white">🔶 Category Icon</FormLabel>
+                            <FormLabel className="text-white">🖼️ Category Image URL</FormLabel>
                             <FormControl>
                               <Input 
                                 {...field}
                                 value={field.value || ""}
-                                placeholder="🏪 (emoji or icon name)"
+                                placeholder="Optional image URL"
                                 className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
-                                data-testid="input-edit-category-icon"
+                                data-testid="input-edit-category-image"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Category Shape */}
+                      <FormField
+                        control={editCategoryForm.control}
+                        name="shape"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white">🔶 Category Shape</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field}
+                                value={field.value || ""}
+                                placeholder="🏪 (emoji or shape)"
+                                className="bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400"
+                                data-testid="input-edit-category-shape"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Category Active Status */}
+                      <FormField
+                        control={editCategoryForm.control}
+                        name="isActive"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center space-x-2">
+                            <FormLabel className="text-white">⚡ Active Status</FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                data-testid="switch-edit-category-active"
                               />
                             </FormControl>
                             <FormMessage />
