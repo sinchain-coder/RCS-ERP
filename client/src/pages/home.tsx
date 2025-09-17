@@ -94,12 +94,25 @@ export default function Home() {
       {/* RCS Logo */}
       <div className="mb-12 relative z-10">
         <div className="flex items-center justify-center">
-          <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-8 py-4 rounded-2xl shadow-2xl border-4 border-yellow-400 transform rotate-1">
-            <span className="text-6xl font-bold tracking-wider font-serif">RCS</span>
+          <div className="relative group">
+            {/* Outer glow effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-amber-200 to-orange-200 rounded-3xl blur-lg opacity-50 group-hover:opacity-70 transition-opacity duration-500"></div>
+            
+            {/* Main logo container */}
+            <div className="relative bg-gradient-to-br from-amber-50 to-orange-100 text-amber-900 px-10 py-6 rounded-3xl shadow-lg border-2 border-amber-200/50 backdrop-blur-sm">
+              {/* Decorative elements */}
+              <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-br from-orange-300 to-amber-400 rounded-full opacity-60 animate-pulse"></div>
+              <div className="absolute -bottom-1 -left-1 w-4 h-4 bg-gradient-to-br from-yellow-300 to-orange-300 rounded-full opacity-50 animate-pulse" style={{animationDelay: '0.5s'}}></div>
+              
+              {/* Main text */}
+              <span className="text-7xl font-bold tracking-wide font-serif bg-gradient-to-r from-amber-700 to-orange-800 bg-clip-text text-transparent drop-shadow-sm">
+                RCS
+              </span>
+              
+              {/* Subtle underline */}
+              <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-16 h-0.5 bg-gradient-to-r from-transparent via-amber-400 to-transparent opacity-60"></div>
+            </div>
           </div>
-        </div>
-        <div className="text-center mt-2">
-          <span className="text-sm text-muted-foreground font-medium">Resource & Commerce Solutions</span>
         </div>
       </div>
 
