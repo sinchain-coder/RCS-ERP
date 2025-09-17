@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, ShoppingCart, Plus, Minus } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Plus, Minus, Package, CheckCircle, Truck, FileText, Eye, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Product } from "@shared/schema";
+import type { Product, Order, Dispatch, DispatchStep, DispatchItem } from "@shared/schema";
 
 interface CartItem extends Product {
   quantity: number;
@@ -18,15 +21,60 @@ export default function POS() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [activeTab, setActiveTab] = useState("pos");
+  const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null);
+  const [dispatchItems, setDispatchItems] = useState<DispatchItem[]>([]);
   const { toast } = useToast();
 
-  const { data: products, isLoading } = useQuery<any>({
+  const { data: products, isLoading } = useQuery<{data: Product[]}>({
     queryKey: ["/api/pos/products"],
   });
 
+  // Orders ready for dispatch (completed orders)
+  const { data: ordersData, isLoading: ordersLoading } = useQuery<{data: Order[]}>({
+    queryKey: ["/api/pos/orders"],
+    enabled: activeTab === "dispatch",
+  });
+
+  // Existing dispatches for POS orders
+  const { data: dispatchesData, isLoading: dispatchesLoading } = useQuery<{data: Dispatch[]}>({
+    queryKey: ["/api/admin/dispatches", "pos"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/admin/dispatches?type=pos");
+      return await response.json();
+    },
+    enabled: activeTab === "dispatch",
+  });
+
+  // Dispatch items for selected dispatch
+  const { data: selectedDispatchItemsData } = useQuery<{data: DispatchItem[]}>({
+    queryKey: ["/api/admin/dispatch-items", selectedDispatch?.id],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/admin/dispatch-items?dispatchId=${selectedDispatch?.id}`);
+      return await response.json();
+    },
+    enabled: !!selectedDispatch?.id,
+  });
+
+  // Dispatch steps for selected dispatch
+  const { data: selectedDispatchStepsData } = useQuery<{data: DispatchStep[]}>({
+    queryKey: ["/api/admin/dispatch-steps", selectedDispatch?.id],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/admin/dispatch-steps?dispatchId=${selectedDispatch?.id}`);
+      return await response.json();
+    },
+    enabled: !!selectedDispatch?.id,
+  });
+
   const createOrderMutation = useMutation({
-    mutationFn: async (orderData: any) => {
-      return apiRequest("POST", "/api/pos/orders", orderData);
+    mutationFn: async (orderData: {
+      customerName: string;
+      customerPhone?: string;
+      totalAmount: string;
+      status: string;
+    }) => {
+      const response = await apiRequest("POST", "/api/pos/orders", orderData);
+      return await response.json();
     },
     onSuccess: () => {
       toast({
@@ -47,8 +95,126 @@ export default function POS() {
     },
   });
 
+  // Dispatch mutations
+  const createDispatchMutation = useMutation({
+    mutationFn: async (data: { orderId?: string, type: string }) => {
+      const response = await apiRequest("POST", "/api/admin/dispatches", data);
+      return await response.json();
+    },
+    onSuccess: (response: { data: Dispatch }) => {
+      toast({
+        title: "Dispatch Created! 🎉",
+        description: "Dispatch workflow has been started successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatches"] });
+      // Initialize steps for the new dispatch
+      if (response?.data?.id) {
+        initializeStepsMutation.mutate(response.data.id);
+      }
+    },
+  });
+
+  const initializeStepsMutation = useMutation({
+    mutationFn: async (dispatchId: string) => {
+      const response = await apiRequest("POST", `/api/admin/dispatches/${dispatchId}/initialize-steps`);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatch-steps"] });
+    },
+  });
+
+  const completeStepMutation = useMutation({
+    mutationFn: async ({ stepId, stepName }: { stepId: string; stepName: string }) => {
+      const response = await apiRequest("PUT", `/api/admin/dispatch-steps/${stepId}/complete`, { stepName });
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Step Completed! ✨",
+        description: "Great job! Moving to the next step.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatch-steps"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatches"] });
+    },
+  });
+
+  const updateDispatchItemQuantityMutation = useMutation({
+    mutationFn: async ({ itemId, quantity }: { itemId: string; quantity: number }) => {
+      const response = await apiRequest("PUT", `/api/admin/dispatch-items/${itemId}/quantity`, { quantity });
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Quantity Updated",
+        description: "Dispatch item quantity has been updated.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatch-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatches"] });
+    },
+  });
+
   const productList = (products?.data as Product[]) || [];
   const cartTotal = cart.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
+
+  // Dispatch data processing
+  const ordersList = ordersData?.data || [];
+  const dispatchesList = dispatchesData?.data || [];
+  const selectedDispatchItems = selectedDispatchItemsData?.data || [];
+  const selectedDispatchSteps = selectedDispatchStepsData?.data || [];
+
+  // Gamified step progression for selected dispatch
+  const getStepProgress = (steps: DispatchStep[]) => {
+    if (!steps.length) return 0;
+    const completedSteps = steps.filter(step => step.isCompleted).length;
+    return (completedSteps / steps.length) * 100;
+  };
+
+  // Calculate progress for individual dispatch cards using dispatch fields
+  const getDispatchProgress = (dispatch: Dispatch) => {
+    // Use dispatch items progress as primary indicator
+    if (dispatch.totalItems && dispatch.totalItems > 0) {
+      return (dispatch.dispatchedItems / dispatch.totalItems) * 100;
+    }
+    
+    // Fallback: Use current step to estimate progress
+    const stepProgressMap: Record<string, number> = {
+      'order_received': 20,
+      'printed': 40,
+      'checked': 60,
+      'dispatched': 80,
+      'received': 100
+    };
+    
+    return stepProgressMap[dispatch.currentStep] || 0;
+  };
+
+  const getStepIcon = (stepName: string) => {
+    switch (stepName) {
+      case 'order_received': return Package;
+      case 'printed': return FileText;
+      case 'checked': return Eye;
+      case 'dispatched': return Truck;
+      case 'received': return CheckCircle;
+      default: return Package;
+    }
+  };
+
+  const getStepColor = (stepName: string, isCompleted: boolean) => {
+    if (isCompleted) return "bg-green-500 text-white";
+    switch (stepName) {
+      case 'order_received': return "bg-blue-500 text-white";
+      case 'printed': return "bg-purple-500 text-white";
+      case 'checked': return "bg-orange-500 text-white";
+      case 'dispatched': return "bg-indigo-500 text-white";
+      case 'received': return "bg-green-500 text-white";
+      default: return "bg-gray-500 text-white";
+    }
+  };
+
+  const createDispatchFromOrder = (orderId: string) => {
+    createDispatchMutation.mutate({ orderId, type: "pos" });
+  };
 
   const addToCart = (product: Product) => {
     setCart(prevCart => {
@@ -136,7 +302,20 @@ export default function POS() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="pos" data-testid="tab-pos">
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              Point of Sale
+            </TabsTrigger>
+            <TabsTrigger value="dispatch" data-testid="tab-dispatch">
+              <Package className="w-4 h-4 mr-2" />
+              Order Dispatch
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="pos" className="mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Products */}
           <div className="lg:col-span-2">
             <Card>
@@ -267,7 +446,236 @@ export default function POS() {
               </CardContent>
             </Card>
           </div>
-        </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="dispatch" className="mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Orders Ready for Dispatch */}
+              <div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle data-testid="text-orders-title">Orders Ready for Dispatch</CardTitle>
+                    <CardDescription data-testid="text-orders-description">
+                      Create dispatches for completed orders
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {ordersLoading ? (
+                      <div className="text-center py-4">
+                        <Package className="w-8 h-8 animate-spin mx-auto mb-4" />
+                        <p data-testid="text-loading-orders">Loading orders...</p>
+                      </div>
+                    ) : ordersList.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-4" data-testid="text-no-orders">
+                        No orders ready for dispatch
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {ordersList.map((order) => (
+                          <div key={order.id} className="border border-border rounded-lg p-4" data-testid={`card-order-${order.id}`}>
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <h3 className="font-semibold" data-testid={`text-order-customer-${order.id}`}>
+                                  {order.customerName || "Walk-in Customer"}
+                                </h3>
+                                <p className="text-sm text-muted-foreground" data-testid={`text-order-amount-${order.id}`}>
+                                  Total: ${order.totalAmount}
+                                </p>
+                              </div>
+                              <Badge variant="secondary" data-testid={`badge-order-status-${order.id}`}>
+                                {order.status}
+                              </Badge>
+                            </div>
+                            <div className="flex justify-end">
+                              <Button
+                                onClick={() => createDispatchFromOrder(order.id)}
+                                disabled={createDispatchMutation.isPending}
+                                size="sm"
+                                data-testid={`button-create-dispatch-${order.id}`}
+                              >
+                                <Sparkles className="w-4 h-4 mr-2" />
+                                Start Dispatch
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Active Dispatches */}
+              <div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle data-testid="text-dispatches-title">Active Dispatches</CardTitle>
+                    <CardDescription data-testid="text-dispatches-description">
+                      Manage dispatch workflows step-by-step
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {dispatchesLoading ? (
+                      <div className="text-center py-4">
+                        <Truck className="w-8 h-8 animate-spin mx-auto mb-4" />
+                        <p data-testid="text-loading-dispatches">Loading dispatches...</p>
+                      </div>
+                    ) : dispatchesList.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-4" data-testid="text-no-dispatches">
+                        No active dispatches
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {dispatchesList.map((dispatch: Dispatch) => (
+                          <div key={dispatch.id} className="border border-border rounded-lg p-4" data-testid={`card-dispatch-${dispatch.id}`}>
+                            <div className="flex justify-between items-start mb-3">
+                              <div>
+                                <h3 className="font-semibold" data-testid={`text-dispatch-id-${dispatch.id}`}>
+                                  Dispatch #{dispatch.id.slice(0, 8)}
+                                </h3>
+                                <p className="text-sm text-muted-foreground" data-testid={`text-dispatch-status-${dispatch.id}`}>
+                                  Status: {dispatch.status}
+                                </p>
+                              </div>
+                              <Badge variant="outline" data-testid={`badge-dispatch-type-${dispatch.id}`}>
+                                POS
+                              </Badge>
+                            </div>
+                            
+                            {/* Progress Bar */}
+                            <div className="mb-3">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-sm font-medium">Progress</span>
+                                <span className="text-sm text-muted-foreground">
+                                  {dispatch.currentStep || 'Not started'}
+                                </span>
+                              </div>
+                              <Progress 
+                                value={getDispatchProgress(dispatch)} 
+                                className="h-2"
+                                data-testid={`progress-dispatch-${dispatch.id}`}
+                              />
+                            </div>
+
+                            <div className="flex justify-end">
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    onClick={() => setSelectedDispatch(dispatch)}
+                                    variant="outline"
+                                    size="sm"
+                                    data-testid={`button-manage-dispatch-${dispatch.id}`}
+                                  >
+                                    <Eye className="w-4 h-4 mr-2" />
+                                    Manage
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-4xl">
+                                  <DialogHeader>
+                                    <DialogTitle>Dispatch Workflow</DialogTitle>
+                                    <DialogDescription>
+                                      Complete steps to process this dispatch
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  
+                                  {selectedDispatch && (
+                                    <div className="space-y-6">
+                                      {/* Step Progression */}
+                                      <div className="grid grid-cols-5 gap-4">
+                                        {selectedDispatchSteps.map((step: DispatchStep, index: number) => {
+                                          const StepIcon = getStepIcon(step.stepName);
+                                          return (
+                                            <div key={step.id} className="text-center">
+                                              <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 ${getStepColor(step.stepName, step.isCompleted)}`}>
+                                                <StepIcon className="w-6 h-6" />
+                                              </div>
+                                              <p className="text-xs font-medium capitalize">
+                                                {step.stepName.replace('_', ' ')}
+                                              </p>
+                                              {step.isCompleted ? (
+                                                <CheckCircle className="w-4 h-4 text-green-500 mx-auto mt-1" />
+                                              ) : (
+                                                <div className="w-4 h-4 mx-auto mt-1"></div>
+                                              )}
+                                              {!step.isCompleted && index === selectedDispatchSteps.findIndex((s: DispatchStep) => !s.isCompleted) && (
+                                                <Button
+                                                  onClick={() => completeStepMutation.mutate({ stepId: step.id, stepName: step.stepName })}
+                                                  disabled={completeStepMutation.isPending}
+                                                  size="sm"
+                                                  className="mt-2"
+                                                  data-testid={`button-complete-step-${step.id}`}
+                                                >
+                                                  Complete
+                                                </Button>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+
+                                      {/* Dispatch Items */}
+                                      {selectedDispatchItems.length > 0 && (
+                                        <div>
+                                          <h3 className="font-semibold mb-3" data-testid="text-dispatch-items-title">Items to Dispatch</h3>
+                                          <div className="space-y-2">
+                                            {selectedDispatchItems.map((item: DispatchItem) => (
+                                              <div key={item.id} className="flex justify-between items-center p-2 border border-border rounded" data-testid={`dispatch-item-${item.id}`}>
+                                                <div>
+                                                  <p className="font-medium" data-testid={`text-dispatch-item-name-${item.id}`}>{item.itemName}</p>
+                                                  <p className="text-sm text-muted-foreground" data-testid={`text-dispatch-item-quantities-${item.id}`}>
+                                                    Ordered: {item.orderedQuantity} | To dispatch: {item.dispatchedQuantity}
+                                                  </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => updateDispatchItemQuantityMutation.mutate({ 
+                                                      itemId: item.id, 
+                                                      quantity: Math.max(0, item.dispatchedQuantity - 1) 
+                                                    })}
+                                                    disabled={item.dispatchedQuantity <= 0 || updateDispatchItemQuantityMutation.isPending}
+                                                    data-testid={`button-decrease-dispatch-quantity-${item.id}`}
+                                                  >
+                                                    <Minus className="w-3 h-3" />
+                                                  </Button>
+                                                  <span className="w-8 text-center" data-testid={`text-dispatch-quantity-${item.id}`}>
+                                                    {item.dispatchedQuantity}
+                                                  </span>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => updateDispatchItemQuantityMutation.mutate({ 
+                                                      itemId: item.id, 
+                                                      quantity: Math.min(item.orderedQuantity, item.dispatchedQuantity + 1) 
+                                                    })}
+                                                    disabled={item.dispatchedQuantity >= item.orderedQuantity || updateDispatchItemQuantityMutation.isPending}
+                                                    data-testid={`button-increase-dispatch-quantity-${item.id}`}
+                                                  >
+                                                    <Plus className="w-3 h-3" />
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </DialogContent>
+                              </Dialog>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );
