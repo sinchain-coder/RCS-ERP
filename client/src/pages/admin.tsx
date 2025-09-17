@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Users, Package, BarChart3, Settings, Store as StoreIcon, Clipboard, LayoutDashboard, Plus, Edit, Trash2, Search, Filter, Eye, X, Tag, List, Calculator, Target } from "lucide-react";
+import { ArrowLeft, Users, Package, BarChart3, Settings, Store as StoreIcon, Clipboard, LayoutDashboard, Plus, Edit, Trash2, Search, Filter, Eye, X, Tag, List, Calculator, Target, Truck, CheckCircle, Clock, Play } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import type { Product, Store, StoreCategory, InsertStore, InsertStoreCategory, Item, ItemCategory, Tax, InsertItem, InsertItemCategory, InsertTax, InsertItemPrice } from "@shared/schema";
-import { insertStoreSchema, insertStoreCategorySchema, insertItemSchema, insertItemCategorySchema, insertTaxSchema, insertItemPriceSchema } from "@shared/schema";
+import type { Product, Store, StoreCategory, InsertStore, InsertStoreCategory, Item, ItemCategory, Tax, InsertItem, InsertItemCategory, InsertTax, InsertItemPrice, Dispatch, DispatchItem, DispatchStep, InsertDispatch, InsertDispatchItem } from "@shared/schema";
+import { insertStoreSchema, insertStoreCategorySchema, insertItemSchema, insertItemCategorySchema, insertTaxSchema, insertItemPriceSchema, insertDispatchSchema, insertDispatchItemSchema } from "@shared/schema";
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -109,6 +109,48 @@ export default function Admin() {
   const taxesList = (taxes?.data as Tax[]) || [];
   const itemsList = (items?.data as Item[]) || [];
 
+  // Independent dispatch state - MUST be declared before queries that reference it
+  const [selectedProducts, setSelectedProducts] = useState<Array<{product: Product, quantity: number}>>([]);
+  const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [dispatchNotes, setDispatchNotes] = useState("");
+
+  // Independent dispatch queries
+  const { data: independentDispatchesData, isLoading: independentDispatchesLoading } = useQuery<{data: Dispatch[]}>({
+    queryKey: ["/api/admin/dispatches", "independent"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/admin/dispatches?type=independent");
+      return response.json();
+    },
+    enabled: activeTab === "independent-dispatch",
+  });
+
+  // Dispatch items for selected dispatch
+  const { data: selectedDispatchItemsData } = useQuery<{data: DispatchItem[]}>({
+    queryKey: ["/api/admin/dispatch-items", selectedDispatch?.id],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/admin/dispatch-items?dispatchId=${selectedDispatch?.id}`);
+      return response.json();
+    },
+    enabled: !!selectedDispatch?.id && activeTab === "independent-dispatch",
+  });
+
+  // Dispatch steps for selected dispatch
+  const { data: selectedDispatchStepsData } = useQuery<{data: DispatchStep[]}>({
+    queryKey: ["/api/admin/dispatch-steps", selectedDispatch?.id],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/admin/dispatch-steps?dispatchId=${selectedDispatch?.id}`);
+      return response.json();
+    },
+    enabled: !!selectedDispatch?.id && activeTab === "independent-dispatch",
+  });
+
+  // Data processing for independent dispatch - MOVED AFTER QUERIES TO FIX TEMPORAL DEAD ZONE
+  const independentDispatchesList = (independentDispatchesData?.data as Dispatch[]) || [];
+  const selectedDispatchItems = (selectedDispatchItemsData?.data as DispatchItem[]) || [];
+  const selectedDispatchSteps = (selectedDispatchStepsData?.data as DispatchStep[]) || [];
+
   // Item form state
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedTaxes, setSelectedTaxes] = useState<string[]>([]);
@@ -123,7 +165,7 @@ export default function Admin() {
   const [editSelectedCategories, setEditSelectedCategories] = useState<string[]>([]);
   const [editSelectedTaxes, setEditSelectedTaxes] = useState<string[]>([]);
   const [editItemPrices, setEditItemPrices] = useState<Array<{storeCategoryId: string, sellPrice: string, purchasePrice: string, isAvailable: boolean}>>([]);
-  
+
   // Duplicate checking functions
   const checkBarcodeUnique = async (barcode: string) => {
     if (!barcode.trim()) {
@@ -383,6 +425,128 @@ export default function Admin() {
     },
   });
 
+  // Independent Dispatch mutations
+  const createIndependentDispatchMutation = useMutation({
+    mutationFn: async (data: { customerName: string; customerPhone: string; notes: string }) => {
+      // First create the dispatch
+      const dispatchData = {
+        type: "independent",
+        status: "pending",
+        currentStep: "created",
+        customerName: data.customerName,
+        customerPhone: data.customerPhone,
+        notes: data.notes,
+        totalItems: selectedProducts.reduce((sum, item) => sum + item.quantity, 0),
+        dispatchedItems: 0,
+      };
+      
+      const dispatchResponse = await apiRequest("POST", "/api/admin/dispatches", dispatchData);
+      const dispatchResult = await dispatchResponse.json();
+      const createdDispatch = dispatchResult.data;
+      
+      // Create dispatch items for each selected product
+      const dispatchItems = selectedProducts.map(item => ({
+        dispatchId: createdDispatch.id,
+        productId: item.product.id,
+        itemName: item.product.name,
+        orderedQuantity: item.quantity,
+        dispatchedQuantity: 0,
+        unitPrice: item.product.price.toString(),
+        isChecked: false,
+      }));
+      
+      // Create all dispatch items
+      await Promise.all(dispatchItems.map(item => 
+        apiRequest("POST", "/api/admin/dispatch-items", item)
+      ));
+      
+      // Create initial dispatch steps (created, prepared, dispatched)
+      const dispatchSteps = [
+        { dispatchId: createdDispatch.id, stepName: "created", stepOrder: 1, isCompleted: true, completedAt: new Date() },
+        { dispatchId: createdDispatch.id, stepName: "prepared", stepOrder: 2, isCompleted: false },
+        { dispatchId: createdDispatch.id, stepName: "dispatched", stepOrder: 3, isCompleted: false },
+      ];
+      
+      await Promise.all(dispatchSteps.map(step => 
+        apiRequest("POST", "/api/admin/dispatch-steps", step)
+      ));
+      
+      return dispatchResponse;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatches", "independent"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatch-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatch-steps"] });
+      setSelectedProducts([]);
+      setCustomerName("");
+      setCustomerPhone("");
+      setDispatchNotes("");
+      toast({ title: "🚚 Dispatch Created", description: "Independent dispatch created successfully!" });
+    },
+    onError: () => {
+      toast({ title: "❌ Error", description: "Failed to create independent dispatch", variant: "destructive" });
+    },
+  });
+
+  const completeDispatchStepMutation = useMutation({
+    mutationFn: async ({ dispatchId, currentStep }: { dispatchId: string; currentStep: string }) => {
+      // Update the current step to completed
+      await apiRequest("PUT", `/api/admin/dispatch-steps/${dispatchId}/complete`, {
+        stepName: currentStep,
+        completedAt: new Date(),
+      });
+      
+      // Update dispatch current step to next step
+      const nextSteps: Record<string, string> = {
+        "created": "prepared",
+        "prepared": "dispatched",
+        "dispatched": "completed"
+      };
+      
+      const nextStep = nextSteps[currentStep];
+      if (nextStep) {
+        await apiRequest("PUT", `/api/admin/dispatches/${dispatchId}`, {
+          currentStep: nextStep,
+          ...(nextStep === "completed" && { status: "dispatched" })
+        });
+      }
+      
+      return { dispatchId, nextStep };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatches", "independent"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/dispatch-steps"] });
+      toast({ title: "✅ Step Completed", description: "Dispatch step marked as complete!" });
+    },
+    onError: () => {
+      toast({ title: "❌ Error", description: "Failed to complete dispatch step", variant: "destructive" });
+    },
+  });
+
+  const updateProductStockMutation = useMutation({
+    mutationFn: async ({ productId, quantityToDeduct }: { productId: string; quantityToDeduct: number }) => {
+      // Get current product data
+      const currentProduct = productList.find(p => p.id === productId);
+      if (!currentProduct) {
+        throw new Error("Product not found");
+      }
+      
+      // Calculate new stock (ensure it doesn't go below 0)
+      const newStock = Math.max(0, (currentProduct.stock || 0) - quantityToDeduct);
+      
+      return apiRequest("PUT", `/api/admin/products/${productId}`, {
+        stock: newStock,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/products"] });
+      toast({ title: "📦 Stock Updated", description: "Product inventory updated successfully!" });
+    },
+    onError: () => {
+      toast({ title: "❌ Error", description: "Failed to update product stock", variant: "destructive" });
+    },
+  });
+
   const onStoreSubmit = (data: InsertStore) => {
     createStoreMutation.mutate(data);
   };
@@ -552,6 +716,7 @@ export default function Admin() {
     { id: "store-master", label: "Store Master", icon: StoreIcon },
     { id: "store-categories", label: "Store Categories", icon: Tag },
     { id: "item-master", label: "Item Master", icon: Package },
+    { id: "independent-dispatch", label: "Independent Dispatch", icon: Package },
     { id: "dispatch-checklist", label: "Dispatch Checklist", icon: Clipboard },
     { id: "settings", label: "Settings", icon: Settings },
   ];
@@ -608,6 +773,7 @@ export default function Admin() {
                       {item.id === "dashboard" && "📊 Main Control"}
                       {item.id === "store-master" && "🏪 Store Hub"}
                       {item.id === "item-master" && "📦 Item Gallery"}
+                      {item.id === "independent-dispatch" && "🚚 Direct Send"}
                       {item.id === "dispatch-checklist" && "🚀 Mission Board"}
                       {item.id === "settings" && "⚙️ Configuration"}
                     </div>
@@ -3740,6 +3906,288 @@ export default function Admin() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {activeTab === "independent-dispatch" && (
+          <div className="space-y-8">
+            {/* Independent Dispatch Header */}
+            <Card className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border-purple-500/30">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-white" data-testid="text-independent-dispatch-title">
+                  <div className="p-2 bg-purple-500/20 rounded-lg">
+                    <Truck className="w-5 h-5 text-purple-400" />
+                  </div>
+                  🚚 Independent Dispatch Center
+                </CardTitle>
+                <CardDescription className="text-slate-300" data-testid="text-independent-dispatch-description">
+                  Create direct product dispatches without waiting for orders
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Product Selection */}
+              <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-600/50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <Package className="w-5 h-5 text-blue-400" />
+                    📦 Product Selection
+                  </CardTitle>
+                  <CardDescription className="text-slate-300">
+                    Choose products and quantities for direct dispatch
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Product List */}
+                  <div className="space-y-2">
+                    {productList.filter(p => p.stock > 0).map((product) => (
+                      <div key={product.id} className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg border border-slate-600">
+                        <div className="flex-1">
+                          <h4 className="text-white font-medium" data-testid={`text-product-${product.id}`}>
+                            {product.name}
+                          </h4>
+                          <p className="text-sm text-slate-300">Stock: {product.stock} | ₹{product.price}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            max={product.stock}
+                            placeholder="Qty"
+                            className="w-20 bg-slate-600 border-slate-500 text-white"
+                            data-testid={`input-quantity-${product.id}`}
+                            value={selectedProducts.find(p => p.product.id === product.id)?.quantity || ''}
+                            onChange={(e) => {
+                              const quantity = parseInt(e.target.value) || 0;
+                              if (quantity > product.stock) return;
+                              
+                              setSelectedProducts(prev => {
+                                const existing = prev.find(p => p.product.id === product.id);
+                                if (existing) {
+                                  if (quantity === 0) {
+                                    return prev.filter(p => p.product.id !== product.id);
+                                  }
+                                  return prev.map(p => 
+                                    p.product.id === product.id ? { ...p, quantity } : p
+                                  );
+                                }
+                                return quantity > 0 ? [...prev, { product, quantity }] : prev;
+                              });
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-green-400 hover:text-green-300"
+                            onClick={() => {
+                              const maxQty = Math.min(product.stock, 10);
+                              setSelectedProducts(prev => {
+                                const existing = prev.find(p => p.product.id === product.id);
+                                if (existing) {
+                                  return prev.map(p => 
+                                    p.product.id === product.id ? { ...p, quantity: maxQty } : p
+                                  );
+                                }
+                                return [...prev, { product, quantity: maxQty }];
+                              });
+                            }}
+                            data-testid={`button-select-${product.id}`}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Selected Products Summary */}
+                  {selectedProducts.length > 0 && (
+                    <div className="border-t border-slate-600 pt-4">
+                      <h4 className="text-white font-medium mb-3">Selected Products ({selectedProducts.length})</h4>
+                      <div className="space-y-2">
+                        {selectedProducts.map(({ product, quantity }) => (
+                          <div key={product.id} className="flex justify-between items-center text-sm">
+                            <span className="text-slate-300">{product.name}</span>
+                            <span className="text-white">
+                              {quantity} × ₹{product.price} = ₹{(parseFloat(product.price) * quantity).toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
+                        <div className="border-t border-slate-600 pt-2 flex justify-between font-bold">
+                          <span className="text-white">Total:</span>
+                          <span className="text-green-400">
+                            ₹{selectedProducts.reduce((sum, p) => sum + (parseFloat(p.product.price) * p.quantity), 0).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Create Dispatch Form */}
+              <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-600/50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <Play className="w-5 h-5 text-green-400" />
+                    🚀 Create Dispatch
+                  </CardTitle>
+                  <CardDescription className="text-slate-300">
+                    Customer details and dispatch information
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label className="text-white">Customer Name</Label>
+                    <Input
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="Enter customer name"
+                      className="bg-slate-700/50 border-slate-600 text-white"
+                      data-testid="input-customer-name"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-white">Customer Phone</Label>
+                    <Input
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      placeholder="Enter phone number"
+                      className="bg-slate-700/50 border-slate-600 text-white"
+                      data-testid="input-customer-phone"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-white">Notes (Optional)</Label>
+                    <Input
+                      value={dispatchNotes}
+                      onChange={(e) => setDispatchNotes(e.target.value)}
+                      placeholder="Special instructions or notes"
+                      className="bg-slate-700/50 border-slate-600 text-white"
+                      data-testid="input-dispatch-notes"
+                    />
+                  </div>
+
+                  <Button
+                    onClick={() => {
+                      if (selectedProducts.length === 0) {
+                        toast({ title: "⚠️ Select Products", description: "Please select at least one product", variant: "destructive" });
+                        return;
+                      }
+                      if (!customerName.trim()) {
+                        toast({ title: "⚠️ Customer Name Required", description: "Please enter customer name", variant: "destructive" });
+                        return;
+                      }
+                      createIndependentDispatchMutation.mutate({
+                        customerName: customerName.trim(),
+                        customerPhone: customerPhone.trim(),
+                        notes: dispatchNotes.trim()
+                      });
+                    }}
+                    disabled={createIndependentDispatchMutation.isPending || selectedProducts.length === 0 || !customerName.trim()}
+                    className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
+                    data-testid="button-create-dispatch"
+                  >
+                    {createIndependentDispatchMutation.isPending ? (
+                      <>
+                        <Clock className="w-4 h-4 mr-2 animate-spin" />
+                        Creating Dispatch...
+                      </>
+                    ) : (
+                      <>
+                        <Truck className="w-4 h-4 mr-2" />
+                        Create Independent Dispatch
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Active Dispatches */}
+            <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-600/50">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between text-white">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-blue-400" />
+                    🔄 Active Independent Dispatches
+                  </span>
+                  <Badge variant="secondary" data-testid="badge-active-dispatches">
+                    {independentDispatchesList.length} active
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {independentDispatchesList.length > 0 ? (
+                  <div className="space-y-4">
+                    {independentDispatchesList.map((dispatch) => {
+                      const progress = dispatch.currentStep === 'created' ? 33 : dispatch.currentStep === 'prepared' ? 67 : 100;
+                      const stepColors = {
+                        created: 'text-blue-400 bg-blue-500/20',
+                        prepared: 'text-yellow-400 bg-yellow-500/20', 
+                        dispatched: 'text-green-400 bg-green-500/20'
+                      };
+                      
+                      return (
+                        <div key={dispatch.id} className="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <h4 className="text-white font-medium" data-testid={`dispatch-${dispatch.id}-customer`}>
+                                {dispatch.customerName}
+                              </h4>
+                              <p className="text-sm text-slate-300">{dispatch.customerPhone}</p>
+                            </div>
+                            <Badge className={stepColors[dispatch.currentStep as keyof typeof stepColors]} data-testid={`dispatch-${dispatch.id}-status`}>
+                              {dispatch.currentStep.replace('_', ' ').toUpperCase()}
+                            </Badge>
+                          </div>
+                          
+                          <div className="mb-3">
+                            <div className="flex justify-between text-sm mb-1">
+                              <span className="text-slate-300">Progress</span>
+                              <span className="text-white">{progress}%</span>
+                            </div>
+                            <div className="w-full bg-slate-600 rounded-full h-2">
+                              <div 
+                                className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-500"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-slate-300">
+                              Items: {dispatch.totalItems} | Created: {new Date(dispatch.createdAt!).toLocaleDateString()}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setSelectedDispatch(dispatch)}
+                              className="text-blue-400 hover:text-blue-300"
+                              data-testid={`button-view-dispatch-${dispatch.id}`}
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              View
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-16 text-slate-300" data-testid="text-no-dispatches">
+                    <div className="text-6xl mb-4">📦</div>
+                    <div className="text-xl font-bold mb-2 text-white">No Active Dispatches</div>
+                    <div className="text-sm opacity-75">
+                      Create your first independent dispatch to get started
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
